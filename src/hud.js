@@ -135,8 +135,24 @@ export class HUD {
         <span class="typ">${w.def.type.toUpperCase()}</span>
         <span class="ammo"></span>
         <span class="nm">${w.def.short}</span>
-        <span class="sub">${w.def.role.toUpperCase()}</span>`;
+        <span class="sub">${w.def.role.toUpperCase()}</span>
+        <span class="bind"></span>`;
+      // tap: toggle hold-fire. long-press: bind weapon to the current target.
+      let pressTimer = null, longFired = false;
+      b.addEventListener('pointerdown', () => {
+        longFired = false;
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+          longFired = true;
+          this.cb.onBindWeapon(w);
+        }, 450);
+      });
+      const cancelPress = () => clearTimeout(pressTimer);
+      b.addEventListener('pointerup', cancelPress);
+      b.addEventListener('pointerleave', cancelPress);
+      b.addEventListener('pointercancel', cancelPress);
       b.addEventListener('click', () => {
+        if (longFired) { longFired = false; return; }
         if (w.hp <= 0) return;
         w.enabled = !w.enabled;
         b.classList.toggle('off', !w.enabled);
@@ -145,7 +161,8 @@ export class HUD {
       this._weaponBtns.push({
         w, btn: b,
         charge: b.querySelector('.charge'),
-        ammo: b.querySelector('.ammo')
+        ammo: b.querySelector('.ammo'),
+        bind: b.querySelector('.bind')
       });
     }
   }
@@ -233,6 +250,10 @@ export class HUD {
       wb.btn.classList.toggle('destroyed', w.hp <= 0);
       wb.btn.classList.toggle('off', w.hp > 0 && !w.enabled);
       wb.ammo.textContent = w.ammo === Infinity ? '' : `×${w.ammo}`;
+      const bt = w.boundTarget && w.boundTarget.alive ? w.boundTarget : null;
+      wb.btn.classList.toggle('bound', !!bt);
+      const bindText = bt ? '»' + bt.name.slice(0, 7) : '';
+      if (wb.bind.textContent !== bindText) wb.bind.textContent = bindText;
     }
 
     // target panel

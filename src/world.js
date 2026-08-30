@@ -25,6 +25,7 @@ export class World {
     this.onMessage = null;        // (text) => void  — HUD toast
     this.onShipKilled = null;     // (ship, killer) => void
     this.onShipDisabled = null;   // (ship) => void
+    this.onDamage = null;         // (shooter, target, kind, amount, wdef) => void
 
     this.glowTex = makeGlowTexture();
     this._spriteMats = new Map();
@@ -272,8 +273,15 @@ export class World {
       const drained = Math.min(target.shield, sd);
       target.shield = Math.max(0, target.shield - sd);
       if (drained > 0) target.shieldHitCd = 4;   // suppress regen while under fire
+      if (!target.shieldUp) target.shieldCollapseCd = 12;  // generator destabilized
       if (wdef.leech && drained > 0) {
         shooter.shield = Math.min(shooter.shieldMax, shooter.shield + drained * 0.7);
+      }
+      if (drained > 1) {
+        if (this.onDamage) this.onDamage(shooter, target, 'shield', drained, wdef);
+        this.spawnDamageText(target, String(Math.round(drained)), '#4fd2ff');
+      } else if (wdef.dmg.hull * dmgMult >= 20 && (wdef.bleed || 0) < 0.3) {
+        this.spawnDamageText(target, 'ABSORBED', '#8aa0b4');
       }
       hullDmg = wdef.dmg.hull * (wdef.bleed || 0) * dmgMult;
       if (wdef.empThroughShields && wdef.dmg.device > 0) {
@@ -295,6 +303,8 @@ export class World {
 
     if (hullDmg > 0) {
       target.hull -= hullDmg;
+      if (this.onDamage) this.onDamage(shooter, target, 'hull', hullDmg, wdef);
+      if (hullDmg > 1) this.spawnDamageText(target, String(Math.round(hullDmg)), '#ffb545');
       if (target.hull <= 0) this.killShip(target, shooter);
     }
   }
@@ -313,6 +323,8 @@ export class World {
       const w = target.weapons.find(x => x.index === idx);
       if (!w || w.hp <= 0) return false;
       w.hp = Math.max(0, w.hp - amount);
+      if (this.onDamage) this.onDamage(shooter, target, 'device', amount, wdef);
+      this.spawnDamageText(target, String(Math.round(amount)), '#c59bff');
       if (w.hp <= 0 && this.onMessage) {
         this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
         audio.play('device_destroyed', target.pos);
@@ -321,6 +333,8 @@ export class World {
       const d = target.devices[key];
       if (!d || d.hp <= 0) return false;
       d.hp = Math.max(0, d.hp - amount);
+      if (this.onDamage) this.onDamage(shooter, target, 'device', amount, wdef);
+      this.spawnDamageText(target, String(Math.round(amount)), '#c59bff');
       if (d.hp <= 0) {
         if (this.onMessage) this.onMessage(`${target.name}: ${key === 'shieldGen' ? 'SHIELD GENERATOR' : key.toUpperCase()} DESTROYED`);
         audio.play('device_destroyed', target.pos);
@@ -385,6 +399,29 @@ export class World {
     this.effects.push({ mesh, ttl: 0.22, ttlMax: 0.22, follow: ship, kind: 'shield' });
   }
 
+  /** floating combat number above a ship (rate-limited per target) */
+  spawnDamageText(target, text, color) {
+    if (target._lastDmgText != null && this.time - target._lastDmgText < 0.15) return;
+    target._lastDmgText = this.time;
+    const c = document.createElement('canvas');
+    c.width = 160; c.height = 48;
+    const ctx = c.getContext('2d');
+    ctx.font = 'bold 30px "SF Mono", Menlo, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 6;
+    ctx.fillStyle = color;
+    ctx.fillText(text, 80, 24);
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const spr = new THREE.Sprite(mat);
+    spr.position.copy(target.pos);
+    spr.position.y += target.def.size * 1.1;
+    spr.position.x += (Math.random() - 0.5) * target.def.size;
+    spr.scale.set(56, 17, 1);
+    this.scene.add(spr);
+    this.effects.push({ mesh: spr, ttl: 0.9, ttlMax: 0.9, kind: 'text', vy: 20 });
+  }
+
   spawnExplosion(pos, size, color, follow = null) {
     audio.play(size >= 60 ? 'explosion_big' : 'explosion_small', pos);
     const s = this._makeSprite(color, size);
@@ -398,6 +435,52 @@ export class World {
   }
 
   // ============================================================ markers ====
+
+  /** range rings + firing-arc wedges for the primary selected ship */
+  setRangeViz(ship) {
+    if (this._rangeViz) {
+      this._rangeViz.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      this.markerGroup.remove(this._rangeViz.group);
+      this._rangeViz = null;
+    }
+    if (!ship) return;
+    const group = new THREE.Group();
+    const wedges = new THREE.Group();     // rotates with the hull; rings don't
+    group.add(wedges);
+    for (const w of ship.weapons) {
+      if (w.hp <= 0) continue;
+      const r = w.def.range;
+      const ringPts = [];
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        ringPts.push(new THREE.Vector3(Math.sin(a) * r, 0, Math.cos(a) * r));
+      }
+      const ring = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(ringPts),
+        new THREE.LineBasicMaterial({ color: w.def.color, transparent: true, opacity: 0.1, depthWrite: false })
+      );
+      ring.renderOrder = 4;
+      group.add(ring);
+      if (w.def.arc < 330) {
+        const az = Math.atan2(w.slot.dir[0], w.slot.dir[2]);
+        const half = THREE.MathUtils.degToRad(w.def.arc / 2);
+        const pts = [new THREE.Vector3(0, 0, 0)];
+        for (let i = 0; i <= 24; i++) {
+          const a = az - half + (i / 24) * 2 * half;
+          pts.push(new THREE.Vector3(Math.sin(a) * r, 0, Math.cos(a) * r));
+        }
+        pts.push(new THREE.Vector3(0, 0, 0));
+        const wl = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(pts),
+          new THREE.LineBasicMaterial({ color: w.def.color, transparent: true, opacity: 0.22, depthWrite: false })
+        );
+        wl.renderOrder = 4;
+        wedges.add(wl);
+      }
+    }
+    this.markerGroup.add(group);
+    this._rangeViz = { ship, group, wedges };
+  }
 
   setSelection(ships) {
     const keep = new Set(ships.map(s => s.id));
@@ -462,6 +545,16 @@ export class World {
           this._setLine(mk.vline, _v1, t);
           this._setLine(mk.line, s.pos, t);
         }
+      }
+    }
+    // range/arc visualization follows the primary ship
+    if (this._rangeViz) {
+      const s = this._rangeViz.ship;
+      if (!s.alive) this.setRangeViz(null);
+      else {
+        this._rangeViz.group.position.copy(s.pos);
+        _v1.set(0, 0, 1).applyQuaternion(s.quat);
+        this._rangeViz.wedges.rotation.y = Math.atan2(_v1.x, _v1.z);
       }
     }
     // unconfirmed contact blips
@@ -605,11 +698,17 @@ export class World {
       } else if (e.kind === 'shield') {
         e.mesh.material.opacity = 0.32 * k;
         if (e.follow) e.mesh.position.copy(e.follow.pos);
+      } else if (e.kind === 'text') {
+        e.mesh.position.y += e.vy * dt;
+        e.mesh.material.opacity = Math.min(1, k * 2.2);
       }
       if (e.ttl <= 0) {
         this.scene.remove(e.mesh);
         if (e.mesh.geometry && e.kind === 'shield') e.mesh.geometry.dispose();
-        if (e.mesh.material) e.mesh.material.dispose();
+        if (e.mesh.material) {
+          if (e.mesh.material.map && e.kind === 'text') e.mesh.material.map.dispose();
+          e.mesh.material.dispose();
+        }
         this.effects.splice(i, 1);
       }
     }

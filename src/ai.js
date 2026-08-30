@@ -48,12 +48,11 @@ export function updateAI(world, dt) {
     const nearest = players.reduce((a, b) =>
       (s.pos.distanceTo(b.pos) < s.pos.distanceTo(a.pos) ? b : a));
 
-    // ---- retreat: a mauled light hull breaks off to let its shield rebuild ----
+    // ---- retreat: a mauled light hull breaks off once to let its shield rebuild ----
     const big = s.def.size > 50;
-    if (!big && !s._retreatUntil && s.hull < s.hullMax * 0.25 &&
-        world.time > (s._lastRetreat || -99) + 40) {
-      s._retreatUntil = world.time + 12;
-      s._lastRetreat = world.time;
+    if (!big && !s._retreatUntil && !s._retreated && s.hull < s.hullMax * 0.25) {
+      s._retreatUntil = world.time + 9;
+      s._retreated = true;
     }
     if (s._retreatUntil) {
       if (world.time > s._retreatUntil) {
@@ -61,7 +60,7 @@ export function updateAI(world, dt) {
       } else {
         s.behavior = 'defensive';
         s.target = null;
-        s.sliders.shd = 1.8; s.sliders.eng = 1.5; s.sliders.wep = 0.5; s.sliders.sen = 0.8;
+        s.sliders.shd = 1.3; s.sliders.eng = 1.6; s.sliders.wep = 0.5; s.sliders.sen = 0.8;
         _v1.copy(s.pos).sub(nearest.pos);
         if (_v1.lengthSq() < 1) _v1.set(1, 0, 0.3);
         if (!s.moveTarget || s.moveTarget.distanceTo(s.pos) < 300) {

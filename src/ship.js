@@ -62,7 +62,7 @@ export class Ship {
         enabled: true,
         ammo: wdef.ammo != null ? wdef.ammo : Infinity,
         hp: Math.min(slot.hp, MOUNT_HP), max: MOUNT_HP,
-        subTarget: 'auto'                // 'auto' | device key — for device-role weapons
+        boundTarget: null                // per-weapon target override (long-press)
       });
     });
 
@@ -71,6 +71,7 @@ export class Ship {
     this.reserve = def.reserve;
     this.shares = { wep: 0, shd: 0, eng: 0, sen: 0 };
     this.shieldHitCd = 0;               // regen pause after shield damage
+    this.shieldCollapseCd = 0;          // long lockout after a full collapse
 
     // --- movement (semi-Newtonian) ---
     this.pos = new THREE.Vector3();
@@ -139,11 +140,15 @@ export class Ship {
     // weapons share refills the reserve cell
     this.reserve = Math.min(this.def.reserve, this.reserve + this.shares.wep * dt);
 
-    // shield regen (needs a live generator; pauses after taking shield damage)
+    // shield regen (needs a live generator; pauses after taking shield damage,
+    // and locks out entirely for a while after a full collapse)
     this.shieldHitCd = Math.max(0, this.shieldHitCd - dt);
+    this.shieldCollapseCd = Math.max(0, this.shieldCollapseCd - dt);
     if (this.deviceOk('shieldGen')) {
-      if (this.shieldHitCd <= 0) {
-        const regen = this.def.shieldRegen * this._levelOf('shd');
+      if (this.shieldHitCd <= 0 && this.shieldCollapseCd <= 0) {
+        // battle damage degrades the emitters: a crippled hull can't heal-tank
+        const integrity = Math.max(0.15, this.hull / this.hullMax);
+        const regen = this.def.shieldRegen * this._levelOf('shd') * integrity;
         this.shield = Math.min(this.shieldMax, this.shield + regen * dt);
       }
     } else if (this.shield > 0) {
@@ -195,13 +200,19 @@ export class Ship {
     // player guns can only engage sensor-confirmed contacts
     const valid = (t) => t && t.alive && !t.disabled && t.faction !== this.faction &&
       (!this.isPlayer || t.detected);
+    // per-weapon bound target overrides everything
+    if (w.boundTarget) {
+      if (valid(w.boundTarget)) return w.boundTarget;
+      w.boundTarget = null;                       // bound target gone — release
+    }
     if (this.behavior === 'defensive' && !w.def.pd) {
       // defensive: only return fire at whoever recently hit us
       return valid(this.lastAttacker) ? this.lastAttacker : null;
     }
     if (valid(this.target)) return this.target;
     if (this.behavior === 'aggressive' || !this.isPlayer) {
-      // sticky auto-target: keep concentrating fire until the pick dies/leaves
+      // sticky auto-target: keep concentrating fire until the pick dies or
+      // drops off sensors — wounded runners get chased down, not forgotten
       if (valid(this._autoFace) && this.pos.distanceTo(this._autoFace.pos) < this.sensorRange()) {
         return this._autoFace;
       }
@@ -231,6 +242,40 @@ export class Ship {
   }
 
   // ------------------------------------------------------------ movement ----
+
+  /** AGGRESSIVE doctrine: with no standing move order, close to weapon range
+   *  of the current target on our own initiative (player ships only — the AI
+   *  runs its own maneuvering). */
+  updatePursuit(dt) {
+    if (!this.isPlayer || this.behavior !== 'aggressive') {
+      if (this._pursuitOrder) { this.moveTarget = null; this._pursuitOrder = false; }
+      return;
+    }
+    if (this.moveTarget && !this._pursuitOrder) return;   // explicit order stands
+    this._pursuitTick = (this._pursuitTick || 0) - dt;
+    if (this._pursuitTick > 0) return;
+    this._pursuitTick = 2;
+    const ok = (t) => t && t.alive && !t.disabled && t.detected;
+    const t = ok(this.target) ? this.target : (ok(this._autoFace) ? this._autoFace : null);
+    if (!t) {
+      if (this._pursuitOrder) { this.moveTarget = null; this._pursuitOrder = false; }
+      return;
+    }
+    let best = 0;
+    for (const w of this.weapons) {
+      if (w.hp > 0 && w.enabled && !w.def.pd) best = Math.max(best, w.def.range);
+    }
+    if (!best) best = 800;
+    const d = this.pos.distanceTo(t.pos);
+    if (d > best * 0.75) {
+      _v1.copy(this.pos).sub(t.pos).normalize();
+      this.moveTarget = t.pos.clone().addScaledVector(_v1, best * 0.55);
+      this._pursuitOrder = true;
+    } else if (this._pursuitOrder) {
+      this.moveTarget = null;
+      this._pursuitOrder = false;
+    }
+  }
 
   updateMovement(dt) {
     const accel = this.def.accel * (0.45 + 0.55 * Math.min(1.5, this._levelOf('eng'))) *
@@ -321,6 +366,7 @@ export class Ship {
     this.updatePower(dt);
     if (!this.disabled) {
       this.updateWeapons(dt, world);
+      this.updatePursuit(dt);
       this.updateMovement(dt);
     } else {
       this.vel.multiplyScalar(Math.max(0, 1 - 0.2 * dt));

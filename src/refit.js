@@ -86,6 +86,28 @@ export function renderDebrief(campaign, result, onContinue) {
     html += `<div class="result-line bad"><span>${result.failReason || 'Fleet destroyed.'}</span><span class="v">NO AWARD</span></div>`;
     html += `<p class="dim" style="margin-top:10px">The fleet has been restored to its pre-mission state. Refit and try again.</p>`;
   }
+
+  // ---- after-action gunnery report ----
+  if (result.stats) {
+    const dealt = Object.entries(result.stats.dealt)
+      .map(([id, d]) => ({ id, ...d, total: d.shield + d.hull + d.device }))
+      .sort((a, b) => b.total - a.total);
+    if (dealt.length) {
+      html += `<h3 style="margin-top:14px;color:var(--amber);font-size:11px;letter-spacing:0.14em">GUNNERY REPORT — DAMAGE DEALT</h3>`;
+      for (const d of dealt.slice(0, 10)) {
+        const w = WEAPONS[d.id];
+        html += `<div class="result-line"><span>${w ? w.name : d.id}</span>`
+          + `<span class="v">SHD ${Math.round(d.shield)} · HULL ${Math.round(d.hull)} · DEV ${Math.round(d.device)}</span></div>`;
+      }
+    }
+    const taken = Object.entries(result.stats.taken).sort((a, b) => b[1] - a[1]);
+    if (taken.length) {
+      html += `<h3 style="margin-top:12px;color:var(--amber);font-size:11px;letter-spacing:0.14em">DAMAGE TAKEN</h3>`;
+      for (const [name, amt] of taken) {
+        html += `<div class="result-line"><span>${name}</span><span class="v">${Math.round(amt)}</span></div>`;
+      }
+    }
+  }
   body.innerHTML = html;
   $('btn-db-next').textContent = result.won ? 'TO SPACEPORT' : 'RETRY';
   $('btn-db-next').onclick = onContinue;

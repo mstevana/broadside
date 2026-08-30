@@ -93,6 +93,7 @@ const hud = new HUD({
   },
   onSelectShip: (ship) => mission && mission.select(ship),
   onFocusDevice: (key) => mission && mission.setFocusDevice(key),
+  onBindWeapon: (w) => mission && mission.bindWeapon(w),
   onBehavior: (mode) => mission && mission.setBehavior(mode),
   onStop: () => mission && mission.allStop(),
   onPause: () => mission && mission.togglePause(),
@@ -126,6 +127,7 @@ class MissionRun {
     this.result = null;
     this.elapsed = 0;
     this.lostShips = [];
+    this.stats = { dealt: {}, taken: {} };
     this.deviceWasLost = false;
     this.bossGenFirst = false;
     this.prize = null;
@@ -145,6 +147,17 @@ class MissionRun {
     this.waves = missionDef.waves.map(w => ({ ...w, spawned: false }));
 
     this.world.onMessage = (t) => hud.toast(t);
+    this.world.onDamage = (shooter, target, kind, amount, wdef) => {
+      if (amount <= 0) return;
+      if (shooter.isPlayer) {
+        const e = this.stats.dealt[wdef.id] ||
+          (this.stats.dealt[wdef.id] = { shield: 0, hull: 0, device: 0 });
+        e[kind] += amount;
+      }
+      if (target.isPlayer) {
+        this.stats.taken[target.name] = (this.stats.taken[target.name] || 0) + amount;
+      }
+    };
     this.world.onShipKilled = (ship) => this.onShipKilled(ship);
     this.world.onShipDisabled = (ship) => {
       hud.toast(`${ship.name} DISABLED — objective secured`);
@@ -194,8 +207,25 @@ class MissionRun {
       this.selection = [ship];
     }
     this.world.setSelection(this.selection);
+    this.world.setRangeViz(this.selection[0] || null);
     input.setFollow(this.selection[0] || null);
     hud.refreshBehavior();
+  }
+
+  /** long-press on a weapon button: bind/rebind/release it on the current target */
+  bindWeapon(w) {
+    const prim = this.selection[0];
+    const t = prim && prim.target && prim.target.alive && prim.target.detected
+      ? prim.target : null;
+    if (t && w.boundTarget !== t) {
+      w.boundTarget = t;
+      hud.toast(`${w.def.short} BOUND → ${t.name}`);
+    } else if (w.boundTarget) {
+      w.boundTarget = null;
+      hud.toast(`${w.def.short}: bound target released`);
+    } else {
+      hud.toast('LONG-PRESS binds a weapon — designate a target first');
+    }
   }
 
   setTarget(enemy) {
@@ -228,6 +258,7 @@ class MissionRun {
       const offset = s.pos.clone().sub(centroid);
       if (offset.length() > 400) offset.setLength(400);
       s.moveTarget = point.clone().add(sel.length > 1 ? offset : new THREE.Vector3());
+      s._pursuitOrder = false;    // explicit orders override aggressive pursuit
     }
   }
 
@@ -375,7 +406,8 @@ class MissionRun {
       failReason: this.result.failReason,
       missionDef: this.def,
       secondaryMet: this.result.won && this.checkSecondary(),
-      lostShips: this.lostShips
+      lostShips: this.lostShips,
+      stats: this.stats
     };
     endMission(res);
   }
