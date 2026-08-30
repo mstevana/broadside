@@ -359,8 +359,10 @@ export const MISSIONS = [
       + 'The pulse laser fills the gaps. Keep the PD grid live — the Shoal loves seekers.',
     secondaryText: 'Finish the engagement with the Falchion above 75% hull.',
     waves: [
-      { delay: 0, ships: [ { cls: 'vx_stinger', at: [900, 0, 1100] }, { cls: 'vx_stinger', at: [1250, 60, 700] } ] }
+      { delay: 0, ships: [ { cls: 'vx_stinger', at: [900, 0, 1100] } ] },
+      { delay: 55, ships: [ { cls: 'vx_stinger', at: [-1100, 60, 1300] } ] }
     ],
+    music: 'signal',
     basePoints: 130, secondaryPoints: 45, xp: 110, secondaryXp: 50,
     secondary: 'flagHull75'
   },
@@ -374,6 +376,7 @@ export const MISSIONS = [
       { delay: 0, ships: [ { cls: 'vx_stinger', at: [-1100, 0, 1200] }, { cls: 'vx_stinger', at: [-800, -80, 1500] } ] },
       { delay: 50, ships: [ { cls: 'vx_mantis', at: [-1500, 120, 900] } ] }
     ],
+    music: 'signal',
     basePoints: 160, secondaryPoints: 50, xp: 130, secondaryXp: 55,
     secondary: 'noDeviceLost'
   },
@@ -390,6 +393,7 @@ export const MISSIONS = [
         { cls: 'vx_stinger', at: [-350, 0, 1400] }, { cls: 'vx_stinger', at: [350, 40, 1400] }
       ] }
     ],
+    music: 'broadside',
     basePoints: 190, secondaryPoints: 60, xp: 150, secondaryXp: 65,
     secondary: 'prizeIntact', special: 'disable_escape', escapeRadius: 7800
   },
@@ -404,6 +408,7 @@ export const MISSIONS = [
       { afterCleared: true, ships: [ { cls: 'vx_mantis', at: [-1300, 0, 1000] }, { cls: 'vx_lamprey', at: [-1000, 100, 1400] } ] },
       { afterCleared: true, ships: [ { cls: 'vx_basilisk', at: [0, -120, 1900] }, { cls: 'vx_stinger', at: [400, 0, 1700] } ] }
     ],
+    music: 'broadside',
     basePoints: 230, secondaryPoints: 70, xp: 180, secondaryXp: 70,
     secondary: 'noShipLost'
   },
@@ -417,6 +422,7 @@ export const MISSIONS = [
       { delay: 0, ships: [ { cls: 'vx_mantis', at: [700, 0, 1500] }, { cls: 'vx_mantis', at: [-700, 60, 1500] } ] },
       { delay: 40, ships: [ { cls: 'vx_hierophant', at: [0, 0, 2300], boss: true }, { cls: 'vx_stinger', at: [300, -60, 2100] }, { cls: 'vx_stinger', at: [-300, 60, 2100] } ] }
     ],
+    music: 'leviathan',
     basePoints: 300, secondaryPoints: 90, xp: 240, secondaryXp: 90,
     secondary: 'bossGenFirst'
   }

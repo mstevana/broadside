@@ -82,6 +82,35 @@ a mission restores the fleet to its pre-launch state; losing a ship on a *won*
 mission strikes it from the registry permanently. Progress saves to
 `localStorage`.
 
+## Audio
+
+Everything is synthesized live with the Web Audio API — no audio assets. Toggle
+with the ♪ button (top bar in combat, SOUND on the main menu); the setting persists.
+
+**Sound effects** are per-weapon (laser zaps, railgun cracks, energy-shell
+whooshes, missile launches, point-defence ticks), plus shield impacts,
+explosions sized to the blast, shield-down / device-destroyed alarms, new-contact
+alerts, UI ticks and a low engine-room ambience during combat. Effects are
+distance-attenuated and stereo-panned relative to the camera, share a generated
+convolution reverb, and are rate-limited so big battles stay clean.
+
+**Music** is a generative score in the spirit of Paul Ruskay's Homeworld
+soundtrack — low drones, modal scales (phrygian/dorian/aeolian), sparse
+duduk-like lead lines with delayed vibrato, slow pad swells, distant taikos and
+heavy reverb. Melodies are random walks on each track's mode, so nothing ever
+loops exactly. Eight tracks, switched by context with crossfades:
+
+| Track | Mode | Where |
+|---|---|---|
+| *Adrift* | aeolian drone | main menu |
+| *Cold Anchorage* | dorian | spaceport / refit |
+| *The Verge* | phrygian | mission briefing |
+| *Signal Fires* | aeolian, taikos | combat (missions 1–2) |
+| *Broadsides* | harmonic minor, driving | combat (missions 3–4) |
+| *Leviathan Choir* | phrygian, formant-filtered "choir" | the Hierophant |
+| *Homecoming* | lydian | debrief, victory |
+| *Dirge for the Fleet* | aeolian, tolling bells | debrief, defeat |
+
 ## Code layout
 
 ```
@@ -92,6 +121,8 @@ src/ship.js     Ship entity: power, devices, weapons, semi-Newtonian movement
 src/world.js    combat sim: fire resolution, projectiles/missiles/PD, damage, markers, effects
 src/ai.js       Vessari behaviour (orbit-and-strip, leech hunting, flee logic)
 src/input.js    touch/mouse gestures, orbit camera, move-with-altitude gesture
+src/audio.js    Web Audio SFX engine: synthesis, spatialization, reverb, ambience
+src/music.js    generative music engine + the eight track definitions
 src/hud.js      combat DOM HUD
 src/refit.js    debrief + spaceport screens, economy
 src/meshes.js   procedural ship meshes, starfield, glow sprites
@@ -108,4 +139,6 @@ src/main.js     campaign state machine, mission runner, render loop
   version; the anti-device layer covers their tactical role. Natural next step.
 - Weapon "swapping between missions" is free; buying new weapons costs points.
   Ammo replenishes free between missions.
-- No audio yet.
+- Slow projectiles aim at the *intercept point*, not the target's current
+  position — they render as velocity-aligned tracers so leading fire reads as
+  aimed, not misfired.

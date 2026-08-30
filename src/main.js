@@ -11,6 +11,8 @@ import { InputController } from './input.js';
 import { HUD } from './hud.js';
 import { renderDebrief, renderRefit, commanderMods, closeModal } from './refit.js';
 import { makeStarfield } from './meshes.js';
+import { audio } from './audio.js';
+import { music } from './music.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'broadside_save_v1';
@@ -173,7 +175,10 @@ class MissionRun {
       if (spec.flee) ship.fleePoint = new THREE.Vector3(spec.flee[0], spec.flee[1], spec.flee[2]);
       if (spec.boss) this.boss = ship;
     }
-    if (w.delay !== 0 || w.afterCleared) hud.toast('NEW CONTACTS ON SENSORS');
+    if (w.delay !== 0 || w.afterCleared) {
+      hud.toast('NEW CONTACTS ON SENSORS');
+      audio.play('alert');
+    }
   }
 
   // ---- selection & orders ----
@@ -374,11 +379,13 @@ function gotoMenu() {
   campaign && saveCampaign();
   $('btn-continue').disabled = !loadCampaign();
   showScreen('screen-menu');
+  music.setTrack('adrift');
 }
 
 function gotoRefit() {
   saveCampaign();
   showScreen('screen-refit');
+  music.setTrack('anchorage');
   renderRefit(campaign, {
     onLaunch: gotoBriefing,
     onMenu: gotoMenu,
@@ -399,6 +406,7 @@ function gotoBriefing() {
     return `<p><b>${r.name}</b> — ${def.className}, ${weapons} weapons, hull ${r.hull}/${def.hull}</p>`;
   }).join('');
   showScreen('screen-brief');
+  music.setTrack('verge');
   $('btn-launch').onclick = launchMission;
   $('btn-brief-back').onclick = gotoRefit;
 }
@@ -411,6 +419,8 @@ function launchMission() {
   for (const s of SCREENS) $(s).classList.add('hidden');
   mission = new MissionRun(currentMissionDef(), campaign);
   mission.initUI();
+  music.setTrack(currentMissionDef().music || 'signal');
+  audio.startAmbience();
 }
 
 function endMission(res) {
@@ -425,6 +435,8 @@ function endMission(res) {
   }
   mission.dispose();
   mission = null;
+  audio.stopAmbience();
+  music.setTrack(res.won ? 'homecoming' : 'dirge');
   saveCampaign();
   showScreen('screen-debrief');
   renderDebrief(campaign, res, () => {
@@ -447,6 +459,29 @@ $('btn-continue').addEventListener('click', () => {
 $('btn-howto').addEventListener('click', () => $('howto').classList.toggle('hidden'));
 $('btn-continue').disabled = !campaign;
 
+// ------------------------------------------------------------------ audio ----
+
+// browsers only allow audio after a user gesture — arm it on every pointerdown
+document.addEventListener('pointerdown', () => audio.ensure(), { capture: true });
+// soft UI tick for every button press
+document.addEventListener('click', (e) => {
+  if (e.target.closest && e.target.closest('button')) audio.play('ui');
+}, { capture: true });
+
+function syncSoundButtons() {
+  $('btn-sound').classList.toggle('active', !audio.muted);
+  $('btn-sound').textContent = audio.muted ? '♪̸' : '♪';
+  $('btn-sound-menu').textContent = `SOUND: ${audio.muted ? 'OFF' : 'ON'}`;
+}
+function toggleSound() {
+  audio.ensure();
+  audio.setMuted(!audio.muted);
+  syncSoundButtons();
+}
+$('btn-sound').addEventListener('click', toggleSound);
+$('btn-sound-menu').addEventListener('click', toggleSound);
+syncSoundButtons();
+
 // ------------------------------------------------------------------ loop ----
 
 const clock = new THREE.Clock();
@@ -467,13 +502,16 @@ function frame() {
     camera.lookAt(0, 0, 0);
   }
   renderer.render(scene, camera);
+  if (audio.ready) audio.setListener(camera);
 }
 frame();
 
 showScreen('screen-menu');
+music.setTrack('adrift');   // queued until the first user gesture unlocks audio
 
 // debug / test handle
 window.BS = {
   get mission() { return mission; },
-  get campaign() { return campaign; }
+  get campaign() { return campaign; },
+  audio, music
 };

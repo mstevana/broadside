@@ -5,10 +5,12 @@
 
 import * as THREE from 'three';
 import { makeGlowTexture } from './meshes.js';
+import { audio } from './audio.js';
 
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 export class World {
   constructor(scene) {
@@ -33,6 +35,8 @@ export class World {
 
     this._ringGeo = new THREE.RingGeometry(1, 1.12, 40);
     this._ringGeo.rotateX(-Math.PI / 2);
+    this._tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
+    this._tracerMats = new Map();
     this._selRings = new Map();   // shipId -> mesh
 
     this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
@@ -78,6 +82,26 @@ export class World {
     const s = new THREE.Sprite(mat.clone());
     s.scale.set(size, size, 1);
     return s;
+  }
+
+  /** velocity-aligned glowing bolt so shot direction reads at a glance */
+  _makeTracer(color, width, len) {
+    let mat = this._tracerMats.get(color);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.9, depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      this._tracerMats.set(color, mat);
+    }
+    const m = new THREE.Mesh(this._tracerGeo, mat);
+    m.scale.set(width, len, width);
+    return m;
+  }
+
+  _orientTracer(mesh, vel) {
+    _v3.copy(vel).normalize();
+    mesh.quaternion.setFromUnitVectors(_Y_AXIS, _v3);
   }
 
   _makeMoveMarker(color, opacity) {
@@ -141,6 +165,7 @@ export class World {
   fireWeapon(shooter, w, target) {
     const from = shooter.weaponWorldPos(w, new THREE.Vector3());
     const wdef = w.def;
+    audio.weaponSound(wdef, from);
     if (wdef.missile) {
       const n = wdef.salvo || 1;
       for (let i = 0; i < n; i++) this.spawnMissile(shooter, wdef, from, target, i);
@@ -160,26 +185,32 @@ export class World {
     t = from.distanceTo(_v1) / wdef.projSpeed;
     _v1.copy(target.pos).addScaledVector(target.vel, t);
     const dir = _v1.sub(from).normalize();
-    const sprite = this._makeSprite(wdef.color, 14);
-    sprite.position.copy(from);
-    this.scene.add(sprite);
+    const vel = dir.multiplyScalar(wdef.projSpeed);
+    const mesh = this._makeTracer(wdef.color, 1.1, wdef.projSpeed > 600 ? 22 : 12);
+    mesh.position.copy(from);
+    this._orientTracer(mesh, vel);
+    this.scene.add(mesh);
     this.projectiles.push({
-      pos: from.clone(), vel: dir.multiplyScalar(wdef.projSpeed),
-      shooter, wdef, target, sprite,
+      pos: from.clone(), vel,
+      shooter, wdef, target, sprite: mesh,
       life: (wdef.range * 1.35) / wdef.projSpeed
     });
   }
 
   spawnMissile(shooter, wdef, from, target, i) {
-    const sprite = this._makeSprite(wdef.color, 18);
+    const sprite = this._makeSprite(wdef.color, 16);
     sprite.position.copy(from);
     this.scene.add(sprite);
-    // launch sideways scatter so salvos fan out
-    _v1.randomDirection().multiplyScalar(30 + i * 8);
-    const vel = _v2.copy(target.pos).sub(from).normalize()
-      .multiplyScalar(wdef.missile.speed * 0.4).add(_v1).clone();
+    const tail = this._makeTracer(wdef.color, 0.8, 9);
+    tail.position.copy(from);
+    this.scene.add(tail);
+    // mild lateral scatter (perpendicular to the launch line) so salvos fan
+    // out without ever firing away from the target
+    _v2.copy(target.pos).sub(from).normalize();
+    _v1.randomDirection().addScaledVector(_v2, -_v1.dot(_v2)).setLength(10 + i * 6);
+    const vel = _v2.multiplyScalar(wdef.missile.speed * 0.6).add(_v1).clone();
     this.missiles.push({
-      pos: from.clone(), vel, shooter, wdef, target, sprite,
+      pos: from.clone(), vel, shooter, wdef, target, sprite, tail,
       hp: wdef.missile.hp, life: 26, armTime: 0.35
     });
   }
@@ -215,6 +246,7 @@ export class World {
 
   firePD(ship, w, missile) {
     const from = ship.weaponWorldPos(w, _v3);
+    audio.play('pd', from);
     this.spawnBeam(from.clone(), missile.pos, w.def.color, 0.8, 0.08);
     if (Math.random() < (w.def.pdKill || 0.5)) {
       missile.hp = 0;
@@ -249,6 +281,7 @@ export class World {
       if (drained > 0) this.spawnShieldFlash(target);
       if (target.isPlayer && !target.shieldUp && this.onMessage) {
         this.onMessage(`${target.name}: SHIELD DOWN`);
+        audio.play('shield_down');
       }
     } else {
       hullDmg = wdef.dmg.hull * dmgMult;
@@ -281,6 +314,7 @@ export class World {
       w.hp = Math.max(0, w.hp - amount);
       if (w.hp <= 0 && this.onMessage) {
         this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
+        audio.play('device_destroyed', target.pos);
       }
     } else {
       const d = target.devices[key];
@@ -288,10 +322,12 @@ export class World {
       d.hp = Math.max(0, d.hp - amount);
       if (d.hp <= 0) {
         if (this.onMessage) this.onMessage(`${target.name}: ${key === 'shieldGen' ? 'SHIELD GENERATOR' : key.toUpperCase()} DESTROYED`);
+        audio.play('device_destroyed', target.pos);
         if (key === 'engines' && target.objectiveDisable) {
           target.disabled = true;
           target.shield = 0;
           target.moveTarget = null;
+          audio.play('disabled');
           if (this.onShipDisabled) this.onShipDisabled(target);
         }
       }
@@ -334,6 +370,7 @@ export class World {
   // ============================================================ effects ====
 
   spawnShieldFlash(ship) {
+    audio.play('shield_hit', ship.pos);
     const r = ship.def.size * 1.35;
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(r, 12, 8),
@@ -348,6 +385,7 @@ export class World {
   }
 
   spawnExplosion(pos, size, color, follow = null) {
+    audio.play(size >= 60 ? 'explosion_big' : 'explosion_small', pos);
     const s = this._makeSprite(color, size);
     s.position.copy(pos);
     if (follow) {
@@ -478,6 +516,8 @@ export class World {
         m.vel.add(_v2);
         m.pos.addScaledVector(m.vel, dt);
         m.sprite.position.copy(m.pos);
+        m.tail.position.copy(m.pos);
+        this._orientTracer(m.tail, m.vel);
         if (m.pos.distanceTo(t.pos) < t.def.size * 1.2) {
           this.resolveHit(m.shooter, m.wdef, t);
           this.spawnExplosion(m.pos, 30, 0xffc879);
@@ -486,10 +526,11 @@ export class World {
       } else if (!dead) {
         m.pos.addScaledVector(m.vel, dt);
         m.sprite.position.copy(m.pos);
+        m.tail.position.copy(m.pos);
       }
       if (dead) {
-        if (m.hp <= 0 && m.life > 0) { /* intercepted — explosion already spawned */ }
         this.scene.remove(m.sprite);
+        this.scene.remove(m.tail);
         this.missiles.splice(i, 1);
       }
     }
@@ -534,7 +575,7 @@ export class World {
   dispose() {
     for (const s of this.ships) this.scene.remove(s.mesh);
     for (const p of this.projectiles) this.scene.remove(p.sprite);
-    for (const m of this.missiles) this.scene.remove(m.sprite);
+    for (const m of this.missiles) { this.scene.remove(m.sprite); this.scene.remove(m.tail); }
     for (const b of this.beams) this.scene.remove(b.mesh);
     for (const e of this.effects) this.scene.remove(e.mesh);
     this.scene.remove(this.markerGroup);
