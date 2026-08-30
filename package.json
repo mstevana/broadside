@@ -1,0 +1,10 @@
+{
+  "name": "broadside",
+  "version": "0.1.0",
+  "description": "Broadside — mobile-first tactical capital ship combat in the browser (three.js)",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 8080 ."
+  },
+  "license": "MIT"
+}

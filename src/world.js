@@ -1,0 +1,542 @@
+// ============================================================================
+// BROADSIDE — combat world: weapon fire, projectiles, missiles, point-defence,
+// damage resolution (shield / hull / device kill chain), effects & 3D markers.
+// ============================================================================
+
+import * as THREE from 'three';
+import { makeGlowTexture } from './meshes.js';
+
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
+
+export class World {
+  constructor(scene) {
+    this.scene = scene;
+    this.ships = [];
+    this.projectiles = [];
+    this.missiles = [];
+    this.beams = [];
+    this.effects = [];
+    this.time = 0;
+
+    this.onMessage = null;        // (text) => void  — HUD toast
+    this.onShipKilled = null;     // (ship, killer) => void
+    this.onShipDisabled = null;   // (ship) => void
+
+    this.glowTex = makeGlowTexture();
+    this._spriteMats = new Map();
+
+    // ---- shared marker assets ----
+    this.markerGroup = new THREE.Group();
+    scene.add(this.markerGroup);
+
+    this._ringGeo = new THREE.RingGeometry(1, 1.12, 40);
+    this._ringGeo.rotateX(-Math.PI / 2);
+    this._selRings = new Map();   // shipId -> mesh
+
+    this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
+    this._targetRing = this._makeRing(0xff5252);
+    this._targetRing.visible = false;
+    this.markerGroup.add(this._targetRing);
+
+    // ghost marker for the move gesture
+    this.ghost = this._makeMoveMarker(0x35c8ff, 0.9);
+    this._setMarkerVisible(this.ghost, false);
+  }
+
+  // =========================================================== marker kit ====
+
+  _makeRing(color) {
+    const m = new THREE.Mesh(this._ringGeo, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide
+    }));
+    m.renderOrder = 5;
+    return m;
+  }
+
+  _makeLine(color, opacity = 0.5) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+      color, transparent: true, opacity, depthWrite: false
+    }));
+    line.renderOrder = 5;
+    line.frustumCulled = false;
+    return line;
+  }
+
+  _makeSprite(color, size) {
+    let mat = this._spriteMats.get(color);
+    if (!mat) {
+      mat = new THREE.SpriteMaterial({
+        map: this.glowTex, color, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      this._spriteMats.set(color, mat);
+    }
+    const s = new THREE.Sprite(mat.clone());
+    s.scale.set(size, size, 1);
+    return s;
+  }
+
+  _makeMoveMarker(color, opacity) {
+    const ring = this._makeRing(color);
+    const line = this._makeLine(color, 0.35);       // ship -> point
+    const vline = this._makeLine(color, 0.6);       // plane point -> altitude point
+    const planeRing = this._makeRing(color);
+    planeRing.material.opacity = 0.3;
+    const diamond = this._makeSprite(color, 26);
+    this.markerGroup.add(ring, line, vline, planeRing, diamond);
+    return { ring, line, vline, planeRing, diamond, color };
+  }
+
+  _setMarkerVisible(mk, v) {
+    mk.ring.visible = mk.line.visible = mk.vline.visible = mk.planeRing.visible = mk.diamond.visible = v;
+  }
+
+  _setLine(line, a, b) {
+    const p = line.geometry.attributes.position;
+    p.setXYZ(0, a.x, a.y, a.z);
+    p.setXYZ(1, b.x, b.y, b.z);
+    p.needsUpdate = true;
+  }
+
+  /** move-gesture preview: point on plane + altitude offset */
+  showGhost(planePoint, altitude, fromPos) {
+    const mk = this.ghost;
+    this._setMarkerVisible(mk, true);
+    _v1.copy(planePoint); _v1.y += altitude;
+    mk.diamond.position.copy(_v1);
+    mk.ring.position.copy(_v1);
+    mk.ring.scale.setScalar(30);
+    mk.planeRing.position.copy(planePoint);
+    mk.planeRing.scale.setScalar(18);
+    this._setLine(mk.vline, planePoint, _v1);
+    if (fromPos) this._setLine(mk.line, fromPos, _v1); else this._setLine(mk.line, _v1, _v1);
+  }
+
+  hideGhost() { this._setMarkerVisible(this.ghost, false); }
+
+  // ============================================================== ships ====
+
+  addShip(ship, pos, faceTowards) {
+    ship.pos.copy(pos);
+    ship.mesh.position.copy(pos);
+    if (faceTowards) {
+      _v1.copy(faceTowards).sub(pos).normalize();
+      const m = new THREE.Matrix4().lookAt(_v1, _v2.set(0, 0, 0), THREE.Object3D.DEFAULT_UP);
+      ship.quat.setFromRotationMatrix(m);
+      ship.mesh.quaternion.copy(ship.quat);
+    }
+    this.ships.push(ship);
+    this.scene.add(ship.mesh);
+  }
+
+  playerShips() { return this.ships.filter(s => s.isPlayer && s.alive); }
+  enemyShips() { return this.ships.filter(s => !s.isPlayer && s.alive && !s.disabled); }
+
+  // ============================================================= firing ====
+
+  fireWeapon(shooter, w, target) {
+    const from = shooter.weaponWorldPos(w, new THREE.Vector3());
+    const wdef = w.def;
+    if (wdef.missile) {
+      const n = wdef.salvo || 1;
+      for (let i = 0; i < n; i++) this.spawnMissile(shooter, wdef, from, target, i);
+    } else if (wdef.projSpeed) {
+      this.spawnProjectile(shooter, wdef, from, target);
+    } else {
+      // beam: instant hit
+      this.spawnBeam(from, target.pos, wdef.color, wdef.type === 'laser' ? 2.2 : 1.2);
+      this.resolveHit(shooter, wdef, target);
+    }
+  }
+
+  spawnProjectile(shooter, wdef, from, target) {
+    // two-pass intercept lead
+    let t = from.distanceTo(target.pos) / wdef.projSpeed;
+    _v1.copy(target.pos).addScaledVector(target.vel, t);
+    t = from.distanceTo(_v1) / wdef.projSpeed;
+    _v1.copy(target.pos).addScaledVector(target.vel, t);
+    const dir = _v1.sub(from).normalize();
+    const sprite = this._makeSprite(wdef.color, 14);
+    sprite.position.copy(from);
+    this.scene.add(sprite);
+    this.projectiles.push({
+      pos: from.clone(), vel: dir.multiplyScalar(wdef.projSpeed),
+      shooter, wdef, target, sprite,
+      life: (wdef.range * 1.35) / wdef.projSpeed
+    });
+  }
+
+  spawnMissile(shooter, wdef, from, target, i) {
+    const sprite = this._makeSprite(wdef.color, 18);
+    sprite.position.copy(from);
+    this.scene.add(sprite);
+    // launch sideways scatter so salvos fan out
+    _v1.randomDirection().multiplyScalar(30 + i * 8);
+    const vel = _v2.copy(target.pos).sub(from).normalize()
+      .multiplyScalar(wdef.missile.speed * 0.4).add(_v1).clone();
+    this.missiles.push({
+      pos: from.clone(), vel, shooter, wdef, target, sprite,
+      hp: wdef.missile.hp, life: 26, armTime: 0.35
+    });
+  }
+
+  spawnBeam(from, to, color, width = 2, ttl = 0.13) {
+    const len = from.distanceTo(to);
+    if (len < 1) return;
+    const geo = new THREE.CylinderGeometry(width, width, 1, 5, 1, true);
+    const mat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(from).add(to).multiplyScalar(0.5);
+    mesh.scale.y = len;
+    mesh.lookAt(to);
+    mesh.rotateX(Math.PI / 2);
+    this.scene.add(mesh);
+    this.beams.push({ mesh, ttl, ttlMax: ttl });
+  }
+
+  // ====================================================== point defence ====
+
+  /** nearest hostile missile inside this PD weapon's envelope */
+  findMissileTarget(ship, w) {
+    let best = null, bd = Infinity;
+    for (const m of this.missiles) {
+      if (m.shooter.faction === ship.faction || m.armTime > 0) continue;
+      const d = ship.pos.distanceTo(m.pos);
+      if (d < w.def.range && d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  firePD(ship, w, missile) {
+    const from = ship.weaponWorldPos(w, _v3);
+    this.spawnBeam(from.clone(), missile.pos, w.def.color, 0.8, 0.08);
+    if (Math.random() < (w.def.pdKill || 0.5)) {
+      missile.hp = 0;
+      this.spawnExplosion(missile.pos, 22, 0xffc879);
+    }
+  }
+
+  // ============================================================= damage ====
+
+  resolveHit(shooter, wdef, target, opts = {}) {
+    if (!target.alive) return;
+    const mods = shooter.commanderMods;
+    const dmgMult = mods.dmgMult || 1;
+    const traits = shooter.def.traits || {};
+    target.lastAttacker = shooter;
+
+    let hullDmg = 0;
+    let deviceHit = false;
+
+    if (target.shieldUp) {
+      const sd = wdef.dmg.shield * dmgMult * (traits.shieldDmgMult || 1);
+      const drained = Math.min(target.shield, sd);
+      target.shield = Math.max(0, target.shield - sd);
+      if (drained > 0) target.shieldHitCd = 4;   // suppress regen while under fire
+      if (wdef.leech && drained > 0) {
+        shooter.shield = Math.min(shooter.shieldMax, shooter.shield + drained * 0.7);
+      }
+      hullDmg = wdef.dmg.hull * (wdef.bleed || 0) * dmgMult;
+      if (wdef.empThroughShields && wdef.dmg.device > 0) {
+        deviceHit = this.resolveDeviceDamage(shooter, wdef, target);
+      }
+      if (drained > 0) this.spawnShieldFlash(target);
+      if (target.isPlayer && !target.shieldUp && this.onMessage) {
+        this.onMessage(`${target.name}: SHIELD DOWN`);
+      }
+    } else {
+      hullDmg = wdef.dmg.hull * dmgMult;
+      if (wdef.dmg.device > 0) {
+        deviceHit = this.resolveDeviceDamage(shooter, wdef, target);
+        if (!deviceHit) hullDmg += wdef.dmg.device * 0.5 * dmgMult; // miss bleeds to hull
+      }
+      if (hullDmg > 0) this.spawnExplosion(target.pos, 12 + hullDmg * 0.3, 0xffa060, target);
+    }
+
+    if (hullDmg > 0) {
+      target.hull -= hullDmg;
+      if (target.hull <= 0) this.killShip(target, shooter);
+    }
+  }
+
+  /** @returns true if a device actually took the hit */
+  resolveDeviceDamage(shooter, wdef, target) {
+    const key = this.pickDeviceKey(shooter, target);
+    if (!key) return false;
+    const acc = Math.min(0.97, 0.75 + (shooter.commanderMods.deviceAcc || 0));
+    if (Math.random() > acc) return false;
+    const amount = wdef.dmg.device * (shooter.commanderMods.dmgMult || 1) *
+      ((shooter.def.traits || {}).deviceDmgMult || 1);
+
+    if (key.startsWith('w:')) {
+      const idx = parseInt(key.slice(2), 10);
+      const w = target.weapons.find(x => x.index === idx);
+      if (!w || w.hp <= 0) return false;
+      w.hp = Math.max(0, w.hp - amount);
+      if (w.hp <= 0 && this.onMessage) {
+        this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
+      }
+    } else {
+      const d = target.devices[key];
+      if (!d || d.hp <= 0) return false;
+      d.hp = Math.max(0, d.hp - amount);
+      if (d.hp <= 0) {
+        if (this.onMessage) this.onMessage(`${target.name}: ${key === 'shieldGen' ? 'SHIELD GENERATOR' : key.toUpperCase()} DESTROYED`);
+        if (key === 'engines' && target.objectiveDisable) {
+          target.disabled = true;
+          target.shield = 0;
+          target.moveTarget = null;
+          if (this.onShipDisabled) this.onShipDisabled(target);
+        }
+      }
+    }
+    this.spawnExplosion(target.pos, 16, 0xb07cff, target);
+    return true;
+  }
+
+  /** which device does this shot go for — the attacker's focus, else auto */
+  pickDeviceKey(shooter, target) {
+    const focus = shooter.focusDevice;
+    const okDev = (k) => target.devices[k] && target.devices[k].hp > 0;
+    const okMount = (idx) => {
+      const w = target.weapons.find(x => x.index === idx);
+      return w && w.hp > 0;
+    };
+    if (focus) {
+      if (focus.startsWith('w:') ? okMount(parseInt(focus.slice(2), 10)) : okDev(focus)) return focus;
+    }
+    // battle-computer auto priority: generator → engines → mounts → sensors
+    if (okDev('shieldGen')) return 'shieldGen';
+    if (okDev('engines')) return 'engines';
+    const live = target.weapons.filter(w => w.hp > 0);
+    if (live.length) return 'w:' + live[(Math.random() * live.length) | 0].index;
+    if (okDev('sensors')) return 'sensors';
+    return null;
+  }
+
+  killShip(ship, killer) {
+    if (!ship.alive) return;
+    ship.alive = false;
+    ship.hull = 0;
+    this.spawnExplosion(ship.pos, ship.def.size * 3.2, 0xffb060);
+    this.spawnExplosion(ship.pos, ship.def.size * 1.6, 0xffffff);
+    this.scene.remove(ship.mesh);
+    this.clearMarkersFor(ship);
+    if (this.onShipKilled) this.onShipKilled(ship, killer);
+  }
+
+  // ============================================================ effects ====
+
+  spawnShieldFlash(ship) {
+    const r = ship.def.size * 1.35;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 12, 8),
+      new THREE.MeshBasicMaterial({
+        color: 0x35c8ff, transparent: true, opacity: 0.32,
+        depthWrite: false, blending: THREE.AdditiveBlending
+      })
+    );
+    mesh.position.copy(ship.pos);
+    this.scene.add(mesh);
+    this.effects.push({ mesh, ttl: 0.22, ttlMax: 0.22, follow: ship, kind: 'shield' });
+  }
+
+  spawnExplosion(pos, size, color, follow = null) {
+    const s = this._makeSprite(color, size);
+    s.position.copy(pos);
+    if (follow) {
+      _v1.randomDirection().multiplyScalar(follow.def.size * 0.5);
+      s.position.add(_v1);
+    }
+    this.scene.add(s);
+    this.effects.push({ mesh: s, ttl: 0.5, ttlMax: 0.5, grow: size * 1.6, kind: 'boom' });
+  }
+
+  // ============================================================ markers ====
+
+  setSelection(ships) {
+    const keep = new Set(ships.map(s => s.id));
+    for (const [id, ring] of this._selRings) {
+      if (!keep.has(id)) { this.markerGroup.remove(ring); this._selRings.delete(id); }
+    }
+    for (const s of ships) {
+      if (!this._selRings.has(s.id)) {
+        const ring = this._makeRing(0x35c8ff);
+        this._selRings.set(s.id, ring);
+        this.markerGroup.add(ring);
+      }
+    }
+  }
+
+  setTargetMarker(ship) { this._targetShip = ship || null; }
+
+  clearMarkersFor(ship) {
+    const ring = this._selRings.get(ship.id);
+    if (ring) { this.markerGroup.remove(ring); this._selRings.delete(ship.id); }
+    const mk = this._moveMarkers.get(ship.id);
+    if (mk) {
+      for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) this.markerGroup.remove(part);
+      this._moveMarkers.delete(ship.id);
+    }
+    if (this._targetShip === ship) this._targetShip = null;
+  }
+
+  updateMarkers(dt) {
+    const pulse = 1 + Math.sin(this.time * 5) * 0.08;
+    for (const [id, ring] of this._selRings) {
+      const s = this.ships.find(x => x.id === id);
+      if (!s || !s.alive) { ring.visible = false; continue; }
+      ring.visible = true;
+      ring.position.copy(s.pos);
+      ring.position.y -= s.def.size * 0.7;
+      ring.scale.setScalar(s.def.size * 1.5);
+    }
+    // move order markers for player ships
+    for (const s of this.ships) {
+      if (!s.isPlayer) continue;
+      const has = s.alive && s.moveTarget;
+      let mk = this._moveMarkers.get(s.id);
+      if (has && !mk) {
+        mk = this._makeMoveMarker(0x4dd47a, 0.8);
+        this._moveMarkers.set(s.id, mk);
+      }
+      if (mk) {
+        this._setMarkerVisible(mk, !!has);
+        if (has) {
+          const t = s.moveTarget;
+          mk.diamond.position.copy(t);
+          mk.ring.position.copy(t);
+          mk.ring.scale.setScalar(26 * pulse);
+          _v1.set(t.x, 0, t.z);
+          mk.planeRing.position.copy(_v1);
+          mk.planeRing.scale.setScalar(14);
+          mk.planeRing.visible = Math.abs(t.y) > 8;
+          mk.vline.visible = Math.abs(t.y) > 8;
+          this._setLine(mk.vline, _v1, t);
+          this._setLine(mk.line, s.pos, t);
+        }
+      }
+    }
+    // target bracket
+    const ts = this._targetShip;
+    if (ts && ts.alive) {
+      this._targetRing.visible = true;
+      this._targetRing.position.copy(ts.pos);
+      this._targetRing.scale.setScalar(ts.def.size * 1.8 * pulse);
+    } else {
+      this._targetRing.visible = false;
+    }
+  }
+
+  // ============================================================= update ====
+
+  update(dt, cameraPos) {
+    this.time += dt;
+    this._camPos = cameraPos;
+
+    for (const s of this.ships) s.update(dt, this);
+
+    // projectiles
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.pos.addScaledVector(p.vel, dt);
+      p.sprite.position.copy(p.pos);
+      p.life -= dt;
+      const t = p.target;
+      let dead = p.life <= 0;
+      if (!dead && t.alive) {
+        if (p.pos.distanceTo(t.pos) < Math.max(t.def.size * 1.15, p.wdef.prox || 0)) {
+          this.resolveHit(p.shooter, p.wdef, t);
+          dead = true;
+        }
+      }
+      if (dead) {
+        this.scene.remove(p.sprite);
+        this.projectiles.splice(i, 1);
+      }
+    }
+
+    // missiles
+    for (let i = this.missiles.length - 1; i >= 0; i--) {
+      const m = this.missiles[i];
+      m.armTime = Math.max(0, m.armTime - dt);
+      m.life -= dt;
+      const t = m.target;
+      let dead = m.hp <= 0 || m.life <= 0;
+      if (!dead && t.alive) {
+        // homing: steer velocity toward target
+        _v1.copy(t.pos).sub(m.pos).normalize().multiplyScalar(m.wdef.missile.speed);
+        _v2.copy(_v1).sub(m.vel);
+        const maxTurn = m.wdef.missile.speed * m.wdef.missile.turn * dt;
+        if (_v2.length() > maxTurn) _v2.normalize().multiplyScalar(maxTurn);
+        m.vel.add(_v2);
+        m.pos.addScaledVector(m.vel, dt);
+        m.sprite.position.copy(m.pos);
+        if (m.pos.distanceTo(t.pos) < t.def.size * 1.2) {
+          this.resolveHit(m.shooter, m.wdef, t);
+          this.spawnExplosion(m.pos, 30, 0xffc879);
+          dead = true;
+        }
+      } else if (!dead) {
+        m.pos.addScaledVector(m.vel, dt);
+        m.sprite.position.copy(m.pos);
+      }
+      if (dead) {
+        if (m.hp <= 0 && m.life > 0) { /* intercepted — explosion already spawned */ }
+        this.scene.remove(m.sprite);
+        this.missiles.splice(i, 1);
+      }
+    }
+
+    // beams
+    for (let i = this.beams.length - 1; i >= 0; i--) {
+      const b = this.beams[i];
+      b.ttl -= dt;
+      b.mesh.material.opacity = 0.95 * Math.max(0, b.ttl / b.ttlMax);
+      if (b.ttl <= 0) {
+        this.scene.remove(b.mesh);
+        b.mesh.geometry.dispose();
+        b.mesh.material.dispose();
+        this.beams.splice(i, 1);
+      }
+    }
+
+    // effects
+    for (let i = this.effects.length - 1; i >= 0; i--) {
+      const e = this.effects[i];
+      e.ttl -= dt;
+      const k = Math.max(0, e.ttl / e.ttlMax);
+      if (e.kind === 'boom') {
+        const sc = e.grow * (1.6 - k * 0.6);
+        e.mesh.scale.set(sc, sc, 1);
+        e.mesh.material.opacity = k;
+      } else if (e.kind === 'shield') {
+        e.mesh.material.opacity = 0.32 * k;
+        if (e.follow) e.mesh.position.copy(e.follow.pos);
+      }
+      if (e.ttl <= 0) {
+        this.scene.remove(e.mesh);
+        if (e.mesh.geometry && e.kind === 'shield') e.mesh.geometry.dispose();
+        if (e.mesh.material) e.mesh.material.dispose();
+        this.effects.splice(i, 1);
+      }
+    }
+
+    this.updateMarkers(dt);
+  }
+
+  dispose() {
+    for (const s of this.ships) this.scene.remove(s.mesh);
+    for (const p of this.projectiles) this.scene.remove(p.sprite);
+    for (const m of this.missiles) this.scene.remove(m.sprite);
+    for (const b of this.beams) this.scene.remove(b.mesh);
+    for (const e of this.effects) this.scene.remove(e.mesh);
+    this.scene.remove(this.markerGroup);
+  }
+}
