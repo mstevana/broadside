@@ -227,6 +227,7 @@ export class InputController {
     const sphere = new THREE.Sphere();
     for (const s of world.ships) {
       if (!s.alive) continue;
+      if (!s.isPlayer && !s.detected) continue;   // fog of war: can't tap the dark
       sphere.set(s.pos, Math.max(24, s.def.size * 1.35));
       const hitPoint = new THREE.Vector3();
       if (this.ray.ray.intersectSphere(sphere, hitPoint)) {

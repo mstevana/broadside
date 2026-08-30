@@ -81,6 +81,7 @@ export class Ship {
     this.target = null;                  // assigned enemy Ship
     this.focusDevice = null;             // device key on target | null (=> hull/auto)
     this.fleePoint = null;               // AI: point to run to
+    this.detected = this.isPlayer;       // fog of war: enemies start dark
 
     // --- visuals ---
     const built = buildShipMesh(def);
@@ -191,7 +192,9 @@ export class Ship {
   }
 
   pickWeaponTarget(w, world) {
-    const valid = (t) => t && t.alive && !t.disabled && t.faction !== this.faction;
+    // player guns can only engage sensor-confirmed contacts
+    const valid = (t) => t && t.alive && !t.disabled && t.faction !== this.faction &&
+      (!this.isPlayer || t.detected);
     if (this.behavior === 'defensive' && !w.def.pd) {
       // defensive: only return fire at whoever recently hit us
       return valid(this.lastAttacker) ? this.lastAttacker : null;

@@ -40,6 +40,7 @@ export class World {
     this._selRings = new Map();   // shipId -> mesh
 
     this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
+    this._blips = new Map();       // shipId -> sprite (unconfirmed sensor contacts)
     this._targetRing = this._makeRing(0xff5252);
     this._targetRing.visible = false;
     this.markerGroup.add(this._targetRing);
@@ -417,6 +418,8 @@ export class World {
   clearMarkersFor(ship) {
     const ring = this._selRings.get(ship.id);
     if (ring) { this.markerGroup.remove(ring); this._selRings.delete(ship.id); }
+    const blip = this._blips.get(ship.id);
+    if (blip) { this.markerGroup.remove(blip); this._blips.delete(ship.id); }
     const mk = this._moveMarkers.get(ship.id);
     if (mk) {
       for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) this.markerGroup.remove(part);
@@ -461,9 +464,27 @@ export class World {
         }
       }
     }
+    // unconfirmed contact blips
+    for (const s of this.ships) {
+      const wantBlip = !s.isPlayer && s.alive && s.blip;
+      let b = this._blips.get(s.id);
+      if (wantBlip && !b) {
+        b = this._makeSprite(0xff5252, 30);
+        b.material.opacity = 0.5;
+        this.markerGroup.add(b);
+        this._blips.set(s.id, b);
+      }
+      if (b) {
+        b.visible = wantBlip;
+        if (wantBlip) {
+          b.position.copy(s.pos);
+          b.material.opacity = 0.25 + 0.25 * Math.abs(Math.sin(this.time * 3));
+        }
+      }
+    }
     // target bracket
     const ts = this._targetShip;
-    if (ts && ts.alive) {
+    if (ts && ts.alive && ts.detected) {
       this._targetRing.visible = true;
       this._targetRing.position.copy(ts.pos);
       this._targetRing.scale.setScalar(ts.def.size * 1.8 * pulse);
@@ -474,11 +495,35 @@ export class World {
 
   // ============================================================= update ====
 
+  /** fog of war: an enemy is confirmed when any player ship has it on sensors;
+   *  slightly beyond that range it shows as an unconfirmed blip */
+  updateDetection() {
+    for (const e of this.ships) {
+      if (e.isPlayer || !e.alive) continue;
+      let det = false, blip = false;
+      for (const p of this.ships) {
+        if (!p.isPlayer || !p.alive) continue;
+        const d = p.pos.distanceTo(e.pos);
+        const r = p.sensorRange();
+        if (d <= r) { det = true; break; }
+        if (d <= r * 1.35) blip = true;
+      }
+      if (det && !e.detected && this.onMessage && !e._everDetected) {
+        e._everDetected = true;
+        this.onMessage(`CONTACT CONFIRMED: ${e.def.className.toUpperCase()}`);
+      }
+      e.detected = det;
+      e.blip = blip && !det;
+      e.mesh.visible = det;
+    }
+  }
+
   update(dt, cameraPos) {
     this.time += dt;
     this._camPos = cameraPos;
 
     for (const s of this.ships) s.update(dt, this);
+    this.updateDetection();
 
     // projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {

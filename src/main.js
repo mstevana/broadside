@@ -89,13 +89,14 @@ const hud = new HUD({
   getPrimary: () => mission && mission.selection[0] || null,
   getTarget: () => {
     const p = mission && mission.selection[0];
-    return p && p.target && p.target.alive ? p.target : null;
+    return p && p.target && p.target.alive && p.target.detected ? p.target : null;
   },
   onSelectShip: (ship) => mission && mission.select(ship),
   onFocusDevice: (key) => mission && mission.setFocusDevice(key),
   onBehavior: (mode) => mission && mission.setBehavior(mode),
   onStop: () => mission && mission.allStop(),
   onPause: () => mission && mission.togglePause(),
+  onSpeed: () => mission ? mission.cycleSpeed() : '1×',
   onToggleFollow: () => {
     input.follow = !input.follow;
     return input.follow;
@@ -119,6 +120,7 @@ class MissionRun {
     this.world = new World(scene);
     this.selection = [];
     this.paused = false;
+    this.timeScale = 1;
     this.over = false;
     this.overTimer = 0;
     this.result = null;
@@ -155,6 +157,7 @@ class MissionRun {
     hud.buildShipBar();
     this.select(this.world.playerShips()[0]);
     hud.setPaused(false);
+    hud.setSpeed('1×');
     this.updateObjectiveText();
   }
 
@@ -197,6 +200,10 @@ class MissionRun {
 
   setTarget(enemy) {
     if (!enemy || enemy.faction === 'human') return;
+    if (!enemy.detected) {
+      hud.toast('CONTACT UNCONFIRMED — extend sensor range');
+      return;
+    }
     for (const s of this.selection) { s.target = enemy; }
     this.world.setTargetMarker(enemy);
     hud.toast(`TARGET: ${enemy.name}`);
@@ -232,6 +239,12 @@ class MissionRun {
   togglePause() {
     this.paused = !this.paused;
     hud.setPaused(this.paused);
+    if (this.paused) hud.toast('PAUSED — orders can still be issued', 2000);
+  }
+
+  cycleSpeed() {
+    this.timeScale = this.timeScale >= 4 ? 1 : this.timeScale * 2;
+    return `${this.timeScale}×`;
   }
 
   // ---- events ----
@@ -288,7 +301,12 @@ class MissionRun {
   // ---- per-frame ----
 
   update(dt) {
-    if (this.paused) return;
+    if (this.paused) {
+      // tactical pause: sim frozen, but markers track orders issued meanwhile
+      this.world.updateMarkers(0);
+      return;
+    }
+    dt *= this.timeScale;
     this.elapsed += dt;
 
     // wave triggers

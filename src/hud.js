@@ -28,6 +28,9 @@ export class HUD {
     this._toastTimer = null;
 
     $('btn-pause').addEventListener('click', () => cb.onPause());
+    $('btn-speed').addEventListener('click', () => {
+      $('btn-speed').textContent = cb.onSpeed();
+    });
     $('btn-stop').addEventListener('click', () => cb.onStop());
     $('btn-behavior').addEventListener('click', () => {
       const prim = cb.getPrimary();
@@ -75,6 +78,8 @@ export class HUD {
     $('btn-pause').textContent = p ? '▶' : '❚❚';
     $('btn-pause').classList.toggle('active', p);
   }
+
+  setSpeed(label) { $('btn-speed').textContent = label; }
 
   // ---------------------------------------------------------- ship cards ----
 
