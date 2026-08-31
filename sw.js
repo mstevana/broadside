@@ -7,7 +7,7 @@ const ASSETS = [
   './src/main.js', './src/data.js', './src/ship.js', './src/world.js',
   './src/ai.js', './src/input.js', './src/hud.js', './src/refit.js',
   './src/meshes.js', './src/audio.js', './src/music.js', './src/craft.js',
-  './src/tutorial.js', './src/merge.js',
+  './src/tutorial.js', './src/merge.js', './src/textures.js',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 

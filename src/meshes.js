@@ -14,26 +14,58 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from './merge.js';
+import { TEX, TILE, hullMaterial, makeDecal } from './textures.js';
 
 // ------------------------------------------------------------- materials ----
 
 const M = {
-  hull:    new THREE.MeshStandardMaterial({ color: 0x93a4b5, roughness: 0.55, metalness: 0.35, flatShading: true }),
-  plate:   new THREE.MeshStandardMaterial({ color: 0x6f7d8b, roughness: 0.6,  metalness: 0.4,  flatShading: true }),
-  dark:    new THREE.MeshStandardMaterial({ color: 0x44505c, roughness: 0.7,  metalness: 0.45, flatShading: true }),
-  trim:    new THREE.MeshStandardMaterial({ color: 0xc2ced9, roughness: 0.4,  metalness: 0.5,  flatShading: true }),
-  turret:  new THREE.MeshStandardMaterial({ color: 0xb9c4d0, roughness: 0.45, metalness: 0.45, flatShading: true }),
+  // human hard-surface: heavy plating on the main hull, tighter panels on
+  // secondary structure, wide clean plates on armour belts, brushed trim
+  hull:    hullMaterial(0x9fb0c1, TEX.HULL_A, { roughness: 0.58, metalness: 0.36, normal: 1.5 }),
+  plate:   hullMaterial(0x78879a, TEX.HULL_B, { roughness: 0.62, metalness: 0.40, normal: 1.6 }),
+  dark:    hullMaterial(0x4b5866, TEX.HULL_B, { roughness: 0.72, metalness: 0.45, normal: 1.7 }),
+  trim:    hullMaterial(0xc8d4df, TEX.BRUSH,  { roughness: 0.38, metalness: 0.55, normal: 0.6 }),
+  turret:  hullMaterial(0xbecad6, TEX.HULL_C, { roughness: 0.46, metalness: 0.48, normal: 1.4 }),
   glow:    new THREE.MeshBasicMaterial({ color: 0x35c8ff }),
   window:  new THREE.MeshBasicMaterial({ color: 0xffd9a0 }),
   engine:  new THREE.MeshBasicMaterial({ color: 0x66d9ff }),
-  vHull:   new THREE.MeshStandardMaterial({ color: 0x7a5f9e, roughness: 0.45, metalness: 0.15, flatShading: true }),
-  vPlate:  new THREE.MeshStandardMaterial({ color: 0x5d4880, roughness: 0.5,  metalness: 0.15, flatShading: true }),
-  vDark:   new THREE.MeshStandardMaterial({ color: 0x3a2d55, roughness: 0.6,  metalness: 0.1,  flatShading: true }),
-  vBone:   new THREE.MeshStandardMaterial({ color: 0xb9a8cc, roughness: 0.5,  metalness: 0.1,  flatShading: true }),
-  vTurret: new THREE.MeshStandardMaterial({ color: 0x9a7fc0, roughness: 0.45, metalness: 0.2,  flatShading: true }),
+  // vessari: chitin scales, smooth-shaded so the scales read as organic
+  vHull:   hullMaterial(0x8367ab, TEX.CARA_A, { roughness: 0.48, metalness: 0.12, flat: false, normal: 1.4 }),
+  vPlate:  hullMaterial(0x67508f, TEX.CARA_B, { roughness: 0.52, metalness: 0.12, flat: false, normal: 1.3 }),
+  // ridge plates, fins and tendrils are hard chitin, not scaled hide — the
+  // scale map turns small cylinders into bubble wrap
+  vDark:   hullMaterial(0x40325e, TEX.BONE,   { roughness: 0.62, metalness: 0.10, flat: false, normal: 0.8 }),
+  vBone:   hullMaterial(0xb9a8cc, TEX.BONE,   { roughness: 0.52, metalness: 0.08, flat: false, normal: 0.8 }),
+  vTurret: hullMaterial(0x9a7fc0, TEX.BONE,   { roughness: 0.46, metalness: 0.18, flat: false, normal: 0.9 }),
   vGlow:   new THREE.MeshBasicMaterial({ color: 0x59ffc8 }),
   vEngine: new THREE.MeshBasicMaterial({ color: 0xa9ff8a })
 };
+
+// ------------------------------------------------------------ UV baking ----
+//
+// Primitive UVs would stretch a 60m armour belt and a 2m greeble to the same
+// 0..1 range, so plate size would vary wildly across one hull. Instead we
+// project triplanar in ship-local space at a fixed world-units-per-tile: every
+// ship in the fleet ends up with the same plate scale.
+
+function bakeTriplanarUV(geo, tile) {
+  const pos = geo.attributes.position;
+  const nor = geo.attributes.normal;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const ax = Math.abs(nor ? nor.getX(i) : 0);
+    const ay = Math.abs(nor ? nor.getY(i) : 1);
+    const az = Math.abs(nor ? nor.getZ(i) : 0);
+    let u, v;
+    if (ax >= ay && ax >= az)      { u = z; v = y; }   // facing ±X
+    else if (ay >= ax && ay >= az) { u = x; v = z; }   // facing ±Y
+    else                           { u = x; v = y; }   // facing ±Z
+    uv[i * 2] = u / tile;
+    uv[i * 2 + 1] = v / tile;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
 
 // ------------------------------------------------------- geometry builder ----
 //
@@ -53,6 +85,7 @@ class Hull {
       new THREE.Vector3(...(scale || [1, 1, 1]))
     );
     const g = geo.clone().applyMatrix4(m);
+    bakeTriplanarUV(g, TILE);
     this.parts.push({ geo: g, mat });
     return this;
   }
@@ -179,7 +212,9 @@ function addMount(hull, slot, wdef, faction) {
     new THREE.Vector3(pos[0], pos[1], pos[2]), quat, new THREE.Vector3(1, 1, 1)
   );
   for (const p of sub.parts) {
-    hull.parts.push({ geo: p.geo.clone().applyMatrix4(m), mat: p.mat });
+    const geo = p.geo.clone().applyMatrix4(m);
+    bakeTriplanarUV(geo, TILE);
+    hull.parts.push({ geo, mat: p.mat });
   }
 }
 
@@ -214,6 +249,56 @@ const WEAPON_SHAPES = {
   v_leech_beam:      { type: 'laser' }
 };
 
+// =============================================================== DECALS ====
+//
+// Pennant numbers are painted on flat quads on each flank rather than baked
+// into the tiling plating, so the lettering stays crisp and unrepeated. Both
+// sides are ROTATED (never mirror-scaled) so the text reads correctly from
+// either beam.
+
+const DECALS = {
+  hc_falchion:  { code: 'CV-11',  sub: 'FALCHION',  accent: '#35c8ff' },
+  dd_sabre:     { code: 'DD-207', sub: 'SABRE',     accent: '#4dd47a' },
+  dd_rapier:    { code: 'DD-214', sub: 'RAPIER',    accent: '#b07cff' },
+  cr_bulwark:   { code: 'CA-32',  sub: 'BULWARK',   accent: '#35c8ff' },
+  cr_warhammer: { code: 'CA-40',  sub: 'WARHAMMER', accent: '#ffb545' }
+};
+
+const DECAL_MATS = new Map();
+
+/** raised nameplate built into the hull; returns the outer-face X */
+function addNamePlate(hull, { x, y, z, w, h }) {
+  const t = 0.7;
+  hull.box(t, h + 1.2, w + 1.6, M.plate, [ x + t / 2, y, z]);
+  hull.box(t, h + 1.2, w + 1.6, M.plate, [-x - t / 2, y, z]);
+  return x + t + 0.06;
+}
+
+function addDecalPanels(group, def, { x, y, z, w, h }) {
+  const spec = DECALS[def.id];
+  if (!spec) return;
+  let mat = DECAL_MATS.get(def.id);
+  if (!mat) {
+    mat = new THREE.MeshStandardMaterial({
+      map: makeDecal(spec.code, spec.accent, spec.sub),
+      transparent: true, roughness: 0.65, metalness: 0.1,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      depthWrite: false
+    });
+    DECAL_MATS.set(def.id, mat);
+  }
+  const geos = [];
+  for (const side of [1, -1]) {
+    const g = new THREE.PlaneGeometry(w, h);
+    g.rotateY(side * Math.PI / 2);          // face ±X without mirroring the art
+    g.translate(side * x, y, z);
+    geos.push(g);
+  }
+  const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+  mesh.renderOrder = 1;
+  group.add(mesh);
+}
+
 // ================================================================ HUMANS ====
 
 /** shared human detailing: radiators, truss, antennae, hull numbers */
@@ -226,12 +311,15 @@ function humanDetails(h, { len, wid, ht }) {
     h.pair(s => h.box(0.3, 0.3, 0.3, M.dark, [s * wid * 0.30, ht * 0.62, z], { scale: [1, 5, 1] }));
     h.box(wid * 0.62, 0.26, 0.26, M.dark, [0, ht * 0.62 + 1.1, z]);
   }
-  // radiator fins amidships
+  // ventral radiator fins, angled out and down — the flanks stay clear for
+  // the nameplate and boat bays
   h.pair(s => {
-    h.box(0.28, ht * 0.9, len * 0.18, M.trim, [s * wid * 0.60, -ht * 0.15, -len * 0.10],
-      { rot: [0, 0, s * 0.22] });
-    h.box(0.28, ht * 0.7, len * 0.13, M.trim, [s * wid * 0.66, -ht * 0.10, len * 0.10],
-      { rot: [0, 0, s * 0.22] });
+    for (let i = 0; i < 3; i++) {
+      const z = (-0.18 + i * 0.15) * len;
+      h.box(0.26, ht * 1.0, len * 0.075, M.trim, [s * wid * 0.30, -ht * 1.0, z],
+        { rot: [0, 0, s * 0.5] });
+      h.box(0.5, 0.4, len * 0.085, M.dark, [s * wid * 0.24, -ht * 0.52, z]);  // root spar
+    }
   });
   // antenna cluster
   h.cyl(0.14, 0.14, ht * 1.5, 4, M.trim, [0, ht * 1.2, -len * 0.20]);
@@ -242,8 +330,8 @@ function humanDetails(h, { len, wid, ht }) {
     n: 9, w: 1.1, h: 1.0, d: len * 0.035
   }));
   // running lights: red to port, green to starboard
-  h.box(0.5, 0.5, 0.5, M.window, [wid * 0.56, ht * 0.2, len * 0.30]);
-  h.box(0.5, 0.5, 0.5, M.glow, [-wid * 0.56, ht * 0.2, len * 0.30]);
+  h.box(0.5, 0.5, 0.5, M.window, [wid * 0.50, ht * 0.55, len * 0.30]);
+  h.box(0.5, 0.5, 0.5, M.glow, [-wid * 0.50, ht * 0.55, len * 0.30]);
 }
 
 function buildFalchion(def) {
@@ -289,14 +377,17 @@ function buildFalchion(def) {
   for (const x of [-3.2, 3.2]) {
     h.cyl(1.5, 2.2, 3.4, 8, M.dark, [x, 0, -17.4], { rot: [Math.PI / 2, 0, 0] });
   }
+  const plateX = addNamePlate(h, { x: 3.2, y: 0.2, z: -3.5, w: 6.4, h: 2.4 });
   const group = h.assemble();
+  ring.name = '__spin';
   group.add(ring);
   const engines = [];
   for (const x of [-3.2, 3.2]) {
     const e = new THREE.Mesh(new THREE.SphereGeometry(1.2, 10, 8), M.engine);
-    e.position.set(x, 0, -18.9);
+    e.position.set(x, 0, -18.9); e.name = '__engine';
     group.add(e); engines.push(e);
   }
+  addDecalPanels(group, def, { x: plateX, y: 0.2, z: -3.5, w: 6.4, h: 2.4 });
   return { group, spin, engines };
 }
 
@@ -338,13 +429,15 @@ function buildDestroyer(def, variant) {
   for (const x of [-4.2, 0, 4.2]) {
     h.cyl(1.7, 2.4, 4.0, 8, M.dark, [x, -1, -24], { rot: [Math.PI / 2, 0, 0] });
   }
+  const plateX = addNamePlate(h, { x: 3.7, y: 2.4, z: 13, w: 9, h: 2.6 });
   const group = h.assemble();
   const engines = [];
   for (const x of [-4.2, 0, 4.2]) {
     const e = new THREE.Mesh(new THREE.SphereGeometry(1.5, 10, 8), M.engine);
-    e.position.set(x, -1, -25.8);
+    e.position.set(x, -1, -25.8); e.name = '__engine';
     group.add(e); engines.push(e);
   }
+  addDecalPanels(group, def, { x: plateX, y: 2.4, z: 13, w: 9, h: 2.6 });
   return { group, spin: [], engines };
 }
 
@@ -370,7 +463,7 @@ function buildCruiser(def, variant) {
   // flank armour belts + boat bays
   h.pair(s => {
     h.box(2.6, 5.0, L * 0.62, M.plate, [s * (W * 0.62), -0.6, 0]);
-    h.greebleRow(M.dark, { x: s * (W * 0.72), y: -0.6, z0: -L * 0.28, z1: L * 0.28, n: 10, w: 1.0, h: 1.6, d: L * 0.03 });
+    h.greebleRow(M.dark, { x: s * (W * 0.72), y: -0.6, z0: -L * 0.30, z1: -L * 0.06, n: 6, w: 1.0, h: 1.6, d: L * 0.03 });
   });
 
   if (variant === 'shield') {
@@ -394,13 +487,15 @@ function buildCruiser(def, variant) {
   for (const x of [-7, 0, 7]) {
     h.cyl(2.3, 3.2, 5.0, 10, M.dark, [x, -1, -L / 2 - 2], { rot: [Math.PI / 2, 0, 0] });
   }
+  const plateX = addNamePlate(h, { x: W * 0.62 + 1.3, y: -0.4, z: L * 0.17, w: 15, h: 4.0 });
   const group = h.assemble();
   const engines = [];
   for (const x of [-7, 0, 7]) {
     const e = new THREE.Mesh(new THREE.SphereGeometry(2.0, 10, 8), M.engine);
-    e.position.set(x, -1, -L / 2 - 4.4);
+    e.position.set(x, -1, -L / 2 - 4.4); e.name = '__engine';
     group.add(e); engines.push(e);
   }
+  addDecalPanels(group, def, { x: plateX, y: -0.4, z: L * 0.17, w: 15, h: 4.0 });
   return { group, spin: [], engines };
 }
 
@@ -489,6 +584,7 @@ function buildVessari(def, tier) {
     .translate(n.pos[0], n.pos[1], n.pos[2]));
   const veins = new THREE.Mesh(mergeGeometries(glowGeos), M.vGlow.clone());
   veins.material.transparent = true;
+  veins.name = '__veins';
   group.add(veins);
 
   const engines = [];
@@ -496,7 +592,7 @@ function buildVessari(def, tier) {
   for (let i = 0; i < eCount; i++) {
     const x = eCount === 1 ? 0 : (i - 1) * 3.4 * S;
     const e = new THREE.Mesh(new THREE.SphereGeometry(1.25 * S, 10, 8), M.vEngine);
-    e.position.set(x, 0, -0.84 * L);
+    e.position.set(x, 0, -0.84 * L); e.name = '__engine';
     group.add(e); engines.push(e);
   }
   return { group, spin: [], engines, veins };
@@ -504,7 +600,7 @@ function buildVessari(def, tier) {
 
 // ----------------------------------------------------------------- entry ----
 
-export function buildShipMesh(def) {
+function buildPrototype(def) {
   switch (def.id) {
     case 'hc_falchion':   return buildFalchion(def);
     case 'dd_sabre':      return buildDestroyer(def, 'sensor');
@@ -518,6 +614,27 @@ export function buildShipMesh(def) {
     case 'vx_hierophant': return buildVessari(def, 3);
     default:              return buildVessari(def, 0);
   }
+}
+
+// One prototype per class; every hull after the first is a clone sharing its
+// merged geometry and textured materials, so a twelve-ship skirmish costs the
+// same VRAM as one of each.
+const PROTOTYPES = new Map();
+
+export function buildShipMesh(def) {
+  if (!PROTOTYPES.has(def.id)) PROTOTYPES.set(def.id, buildPrototype(def));
+  const proto = PROTOTYPES.get(def.id);
+  const group = proto.group.clone(true);
+  const spin = [], engines = [];
+  let veins = null;
+  group.traverse(o => {
+    if (o.name === '__spin') spin.push(o);
+    else if (o.name === '__engine') engines.push(o);
+    else if (o.name === '__veins') veins = o;
+  });
+  // veins pulse per ship, so that one material must be its own
+  if (veins) veins.material = veins.material.clone();
+  return { group, spin, engines, veins };
 }
 
 // ---------------------------------------------------------- support craft ----

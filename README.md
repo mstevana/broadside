@@ -151,6 +151,37 @@ The game ships a web app manifest and a service worker that precaches every
 asset, so it installs to an iPhone/iPad home screen (fullscreen, landscape) and
 runs with no network at all.
 
+## Procedural textures
+
+There are no image assets — every map is drawn to a canvas at load time from a
+seeded RNG, then uploaded as a three.js texture (~11 MB of VRAM for the whole
+fleet, roughness maps at quarter resolution since they are low-frequency).
+
+- **Hull plating** (three variants): irregular panels from recursive
+  subdivision, each with its own tone, a recessed seam, rivet lines, inset
+  access hatches, vent louvres and occasional hazard bands, plus grime washes
+  and scratches. A height pass is Sobel-filtered into a **normal map**, so
+  seams and rivets actually catch the light, and a **roughness map** varies the
+  finish panel by panel.
+- **Vessari carapace** (two scales): overlapping chitin scales in offset rows
+  with raised centres and grooved rims, subsurface mottling and capillary
+  veins. Hard chitin — ribs, fins, tendrils, mandibles — uses a separate
+  striated bone map instead, since the scale map turns small cylinders into
+  bubble wrap.
+- **Brushed metal** for trim, and **per-class nameplates**: a painted, riveted
+  plate carrying the pennant number, ship name, accent stripe and hazard
+  chevrons (`CA-40 WARHAMMER`, `DD-207 SABRE`, …), fitted to a raised plate
+  built into each hull so nothing clips the lettering.
+
+UVs are **baked triplanar in ship-local space** at a fixed world-units-per-tile
+rather than using each primitive's own 0–1 range — otherwise a 60 m armour belt
+and a 2 m greeble would get the same number of plates. Every ship in the fleet
+ends up with the same plate size, which is what makes them read as one navy.
+
+Each class is built once into a prototype and cloned per ship, so twelve hulls
+in a skirmish share one set of merged geometry and materials (only the
+Vessari's pulsing veins get a per-ship material).
+
 ## Code layout
 
 ```
@@ -166,6 +197,7 @@ src/music.js    generative music engine + the eight track definitions
 src/craft.js    support-craft squadrons: launch, strike runs, escort, recovery
 src/tutorial.js contextual first-mission tutorial script
 src/merge.js    tiny geometry merger (keeps each hull to a few draw calls)
+src/textures.js procedural texture generation (plating, carapace, decals)
 sw.js           service worker (offline precache)
 manifest.webmanifest, icons/  PWA install metadata
 src/hud.js      combat DOM HUD
@@ -186,6 +218,9 @@ src/main.js     campaign state machine, mission runner, render loop
 - Ships are built procedurally from primitives and merged per material at
   authoring time: each capital ship is 2–6k triangles in ~8–13 draw calls, so
   the detail costs almost nothing on a phone.
+- Radiator fins are ventral rather than on the flanks — partly because heat
+  radiators plausibly deploy away from the crewed dorsal spine, and partly
+  because the flanks are where the nameplates go.
 - Support craft (fighters, bombers, gunboats, boarding) are out of scope for this
   version; the anti-device layer covers their tactical role. Natural next step.
 - Weapon "swapping between missions" is free; buying new weapons costs points.
