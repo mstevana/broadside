@@ -202,12 +202,41 @@
   .enemy-card .subs { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px; }
   .enemy-card .hint { margin-top: 6px; font-size: 9px; color: var(--text-dim); letter-spacing: 0.03em; }
   .sub-chip {
+    position: relative; overflow: hidden;
     font-size: 9px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px;
     color: var(--text); letter-spacing: 0.04em;
   }
+  /* the chip doubles as the subsystem's health gauge: the fill drains as the
+     device is worn down, so partial damage is visible, not just destruction */
+  .sub-chip .fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 100%;
+    background: rgba(77,212,122,0.22); transform-origin: left center;
+    transition: transform 0.2s linear;
+  }
+  .sub-chip.dmg .fill { background: rgba(255,181,69,0.26); }
+  .sub-chip.crit .fill { background: rgba(255,82,82,0.28); }
+  .sub-chip .lbl { position: relative; }
+  .sub-chip .pct { position: relative; color: var(--amber); margin-left: 4px; }
   .sub-chip.focused { border-color: var(--red); color: var(--red); background: rgba(255,82,82,0.12); }
-  .sub-chip.destroyed { opacity: 0.35; text-decoration: line-through; }
+  .sub-chip.destroyed { opacity: 0.45; border-color: var(--red); }
+  .sub-chip.destroyed .lbl { text-decoration: line-through; }
+  .sub-chip.destroyed .pct { color: var(--red); }
   .sub-chip.dmg { color: var(--amber); }
+  /* a hit just landed on this device — brief flash so you catch it in motion */
+  .sub-chip.hit { animation: chip-hit 0.5s ease-out; }
+  @keyframes chip-hit {
+    0%   { box-shadow: 0 0 0 2px rgba(197,155,255,0.9); border-color: var(--violet); }
+    100% { box-shadow: 0 0 0 2px rgba(197,155,255,0); }
+  }
+  html.reduced-motion .sub-chip.hit { animation: none; border-color: var(--violet); }
+  /* live read on whether the kill chain is even open on this target */
+  .enemy-card .gate {
+    margin-top: 6px; font-size: 9px; letter-spacing: 0.05em; padding: 3px 5px;
+    border-radius: 4px; text-align: center;
+  }
+  .enemy-card .gate.shut { color: var(--cyan); background: rgba(53,200,255,0.10); }
+  .enemy-card .gate.open { color: var(--green); background: rgba(77,212,122,0.12); }
+  .enemy-card .subsout { margin-top: 5px; font-size: 9px; color: var(--violet); letter-spacing: 0.04em; }
 
   /* the ally cards in the left bar are informational, not commandable */
   .ship-card.ally { border-style: dashed; }

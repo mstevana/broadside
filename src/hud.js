@@ -342,7 +342,7 @@ export class HUD {
         const addChip = (key, label, dev, wpn) => {
           const chip = document.createElement('button');
           chip.className = 'sub-chip';
-          chip.textContent = label;
+          chip.innerHTML = `<span class="fill"></span><span class="lbl">${label}</span><span class="pct"></span>`;
           chip.addEventListener('click', (ev) => {
             ev.stopPropagation();          // don't re-target the card
             const p = this.cb.getPrimary();
@@ -350,17 +350,34 @@ export class HUD {
             this.refreshSubChips();
           });
           subs.appendChild(chip);
-          entry.chips.push({ key, dev, wpn, chip });
+          entry.chips.push({
+            key, dev, wpn, chip,
+            fill: chip.querySelector('.fill'),
+            pct: chip.querySelector('.pct'),
+            lastHp: dev ? dev.hp : wpn.hp, flash: 0
+          });
         };
         for (const key of ['engines', 'shieldGen', 'sensors']) {
           addChip(key, DEVICE_LABELS[key], e.devices[key], null);
         }
         e.weapons.forEach((w) => addChip('w:' + w.index, w.def.short, null, w));
         card.appendChild(subs);
+        // whether device damage can land at all is the thing players miss most:
+        // shots into a live shield never touch a subsystem
+        const gate = document.createElement('div');
+        gate.className = 'gate';
+        card.appendChild(gate);
+        entry.gate = gate;
         const hint = document.createElement('div');
         hint.className = 'hint';
         hint.textContent = 'TAP SUBSYSTEM TO FOCUS FIRE';
         card.appendChild(hint);
+      } else if (!unconfirmed && !neutral) {
+        // untargeted contacts still report what you have already knocked out
+        const out = document.createElement('div');
+        out.className = 'subsout';
+        card.appendChild(out);
+        entry.subsOut = out;
       }
       this._enemyCards.push(entry);
     }
@@ -375,9 +392,50 @@ export class HUD {
       for (const c of e.chips) {
         const hp = c.dev ? c.dev.hp : c.wpn.hp;
         const max = c.dev ? c.dev.max : c.wpn.max;
+        const f = max > 0 ? Math.max(0, hp / max) : 0;
+        c.fill.style.transform = `scaleX(${f.toFixed(3)})`;
+        // the number appears only once the device is hurt, so an intact chip
+        // stays quiet and a damaged one draws the eye
+        const txt = hp <= 0 ? 'OUT' : (f < 0.995 ? `${Math.max(1, Math.round(f * 100))}%` : '');
+        if (c.pct.textContent !== txt) c.pct.textContent = txt;
         c.chip.classList.toggle('destroyed', hp <= 0);
-        c.chip.classList.toggle('dmg', hp > 0 && hp < max * 0.6);
+        c.chip.classList.toggle('crit', hp > 0 && f < 0.3);
+        c.chip.classList.toggle('dmg', hp > 0 && f < 0.6);
         c.chip.classList.toggle('focused', focus === c.key);
+        if (hp < c.lastHp - 0.01) {
+          // restart the flash even if one is already running
+          c.chip.classList.remove('hit');
+          void c.chip.offsetWidth;
+          c.chip.classList.add('hit');
+          c.flash = 0.5;
+        } else if (c.flash > 0) {
+          c.flash -= 0.1;
+          if (c.flash <= 0) c.chip.classList.remove('hit');
+        }
+        c.lastHp = hp;
+      }
+
+      if (e.gate) {
+        const t = e.ship;
+        // a disruptor warhead is the one thing that reaches through a shield
+        const emp = prim && prim.weapons.some(
+          w => w.hp > 0 && w.enabled && w.def.empThroughShields && w.def.dmg.device > 0);
+        const shut = t.shieldUp;
+        const txt = !shut ? 'HULL EXPOSED · SUBSYSTEMS CAN BE HIT'
+          : (emp ? 'SHIELD UP · ONLY DISRUPTORS REACH SUBSYSTEMS'
+                 : 'SHIELD UP · SUBSYSTEMS SHIELDED');
+        if (e.gate.textContent !== txt) e.gate.textContent = txt;
+        e.gate.classList.toggle('shut', shut);
+        e.gate.classList.toggle('open', !shut);
+      }
+
+      if (e.subsOut) {
+        const t = e.ship;
+        const dead = Object.values(t.devices).filter(d => d.hp <= 0).length
+                   + t.weapons.filter(w => w.hp <= 0).length;
+        const total = Object.keys(t.devices).length + t.weapons.length;
+        const txt = dead ? `SUBSYSTEMS ${dead}/${total} OUT` : '';
+        if (e.subsOut.textContent !== txt) e.subsOut.textContent = txt;
       }
     }
   }

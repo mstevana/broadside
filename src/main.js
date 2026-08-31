@@ -242,6 +242,11 @@ class MissionRun {
         t.set(shooter.id, (t.get(shooter.id) || 0) + amount);
       }
     };
+    // one running tally of what the fleet has actually shot off the enemy
+    this.world.onDeviceDestroyed = (shooter, target) => {
+      if (!shooter.isPlayer || target.isPlayer) return;
+      this.stats.subsKilled = (this.stats.subsKilled || 0) + 1;   // onMessage already toasts it
+    };
     this.world.onShipKilled = (ship) => this.onShipKilled(ship);
     this.world.onShipDisabled = (ship) => {
       if (ship.surrendered) {

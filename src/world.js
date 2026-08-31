@@ -13,6 +13,9 @@ const _v3 = new THREE.Vector3();
 const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _col = new THREE.Color();
 
+/** compact device names for the floating combat text */
+const DEVICE_SHORT = { engines: 'ENGINES', shieldGen: 'SHIELD GEN', sensors: 'SENSORS' };
+
 /** on-screen width of a selection ring's band, in CSS pixels */
 const SEL_RING_PX = 2.5;
 
@@ -482,9 +485,9 @@ export class World {
       }
       if (drained > 1) {
         if (this.onDamage) this.onDamage(shooter, target, 'shield', drained, wdef);
-        this.spawnDamageText(target, String(Math.round(drained)), '#4fd2ff');
+        this.spawnDamageText(target, String(Math.round(drained)), '#4fd2ff', 'abs');
       } else if (wdef.dmg.hull * dmgMult >= 20 && (wdef.bleed || 0) < 0.3) {
-        this.spawnDamageText(target, 'ABSORBED', '#8aa0b4');
+        this.spawnDamageText(target, 'ABSORBED', '#8aa0b4', 'abs');
       }
       hullDmg = wdef.dmg.hull * (wdef.bleed || 0) * dmgMult;
       if (wdef.empThroughShields && wdef.dmg.device > 0) {
@@ -527,9 +530,12 @@ export class World {
       if (!w || w.hp <= 0) return false;
       w.hp = Math.max(0, w.hp - amount);
       if (this.onDamage) this.onDamage(shooter, target, 'device', amount, wdef);
-      this.spawnDamageText(target, String(Math.round(amount)), '#c59bff');
+      // name the subsystem in the floating text — a bare violet number told you
+      // something was hit, but never what
+      this.spawnDamageText(target, `${w.def.short} −${Math.round(amount)}`, '#c59bff', 'device');
       if (w.hp <= 0) {
         if (this.onMessage) this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
+        if (this.onDeviceDestroyed) this.onDeviceDestroyed(shooter, target, `${w.def.short} mount`);
         audio.play('device_destroyed', target.pos);
         this.checkSurrender(target);
       }
@@ -538,9 +544,11 @@ export class World {
       if (!d || d.hp <= 0) return false;
       d.hp = Math.max(0, d.hp - amount);
       if (this.onDamage) this.onDamage(shooter, target, 'device', amount, wdef);
-      this.spawnDamageText(target, String(Math.round(amount)), '#c59bff');
+      this.spawnDamageText(target, `${DEVICE_SHORT[key] || key.toUpperCase()} −${Math.round(amount)}`,
+        '#c59bff', 'device');
       if (d.hp <= 0) {
         if (this.onMessage) this.onMessage(`${target.name}: ${key === 'shieldGen' ? 'SHIELD GENERATOR' : key.toUpperCase()} DESTROYED`);
+        if (this.onDeviceDestroyed) this.onDeviceDestroyed(shooter, target, DEVICE_SHORT[key] || key);
         audio.play('device_destroyed', target.pos);
         if (key === 'engines') this.checkDisable(target);
       }
@@ -649,25 +657,39 @@ export class World {
   }
 
   /** floating combat number above a ship (rate-limited per target) */
-  spawnDamageText(target, text, color) {
+  /**
+   * Floating combat text. `lane` throttles each kind of readout separately, so
+   * a stream of hull numbers can never crowd out the rarer subsystem hit that
+   * the player actually needs to see.
+   */
+  spawnDamageText(target, text, color, lane = 'dmg') {
     if (this.effects.length > (World.effectBudget || 160) * 0.7) return;
-    if (target._lastDmgText != null && this.time - target._lastDmgText < 0.15) return;
-    target._lastDmgText = this.time;
+    if (!target._dmgTextAt) target._dmgTextAt = {};
+    if (target._dmgTextAt[lane] != null && this.time - target._dmgTextAt[lane] < 0.15) return;
+    target._dmgTextAt[lane] = this.time;
+    const FONT = 'bold 30px "SF Mono", Menlo, monospace';
     const c = document.createElement('canvas');
-    c.width = 160; c.height = 48;
     const ctx = c.getContext('2d');
-    ctx.font = 'bold 30px "SF Mono", Menlo, monospace';
+    ctx.font = FONT;
+    c.width = Math.max(160, Math.ceil(ctx.measureText(text).width) + 20);
+    c.height = 48;
+    ctx.font = FONT;                       // resizing the canvas resets the state
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 6;
     ctx.fillStyle = color;
-    ctx.fillText(text, 80, 24);
+    ctx.fillText(text, c.width / 2, 24);
     const tex = new THREE.CanvasTexture(c);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
     const spr = new THREE.Sprite(mat);
+    // each lane sits at its own height, so a subsystem hit is never buried under
+    // the hull number that landed in the same volley
+    const LANE_Y = { device: 1.7, dmg: 1.1, abs: 0.7 };
     spr.position.copy(target.pos);
-    spr.position.y += target.def.size * 1.1;
+    spr.position.y += target.def.size * (LANE_Y[lane] != null ? LANE_Y[lane] : 1.1);
     spr.position.x += (Math.random() - 0.5) * target.def.size;
-    spr.scale.set(56, 17, 1);
+    // 17 world units tall whatever the string; width follows the canvas
+    const h = 17, w = Math.min(150, c.width * (h / 48));
+    spr.scale.set(w, w * (48 / c.width), 1);
     this.scene.add(spr);
     this.effects.push({ mesh: spr, ttl: 0.9, ttlMax: 0.9, kind: 'text', vy: 20 });
   }

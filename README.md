@@ -59,6 +59,23 @@ derelict hulls are dimmed and tagged. The ship you designate expands in place to
 carry its subsystem chips, so focus-fire targeting lives on the card itself
 rather than in a separate panel.
 
+Each chip is that subsystem's health gauge: the fill drains as the device is
+worn down, a percentage appears the moment it drops below full, the chip flashes
+violet on every hit that lands, and a dead one reads **OUT**. Under the chips a
+line states whether the kill chain is even open — *SHIELD UP · SUBSYSTEMS
+SHIELDED* while the shield holds (shots are going into the shield and touching
+no device), *ONLY DISRUPTORS REACH SUBSYSTEMS* if the selected ship is carrying
+a warhead that punches through, *HULL EXPOSED · SUBSYSTEMS CAN BE HIT* once the
+shield is down. Contacts you are not currently targeting still report
+`SUBSYSTEMS n/m OUT`, and the debrief tallies how many you knocked out over the
+whole engagement.
+
+Floating combat text is lanes, not one stream: subsystem hits are violet and
+name the device (`ENGINES −12`), hull damage is amber, shield drain and
+`ABSORBED` are blue-grey and sit lowest. Each lane throttles separately and
+draws at its own height, so a volley of hull numbers can never bury the
+subsystem hit underneath it.
+
 Move orders show a pulsing marker (with a plane-projection line for off-plane
 targets) until the ship arrives. The selected ship also draws its weapon range
 rings and firing-arc wedges, so you can see which mounts will actually bear.

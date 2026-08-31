@@ -107,6 +107,10 @@ export function renderDebrief(campaign, result, onContinue) {
           + `<span class="v">SHD ${Math.round(d.shield)} · HULL ${Math.round(d.hull)} · DEV ${Math.round(d.device)}</span></div>`;
       }
     }
+    if (result.stats.subsKilled) {
+      html += `<div class="result-line"><span>Enemy subsystems knocked out</span>`
+        + `<span class="v">${result.stats.subsKilled}</span></div>`;
+    }
     const taken = Object.entries(result.stats.taken).sort((a, b) => b[1] - a[1]);
     if (taken.length) {
       html += `<h3 style="margin-top:12px;color:var(--amber);font-size:11px;letter-spacing:0.14em">DAMAGE TAKEN</h3>`;
