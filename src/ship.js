@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { WEAPONS, SHIP_CLASSES, MOUNT_HP } from './data.js';
 import { buildShipMesh } from './meshes.js';
+import { Squadron } from './craft.js';
 
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -65,6 +66,11 @@ export class Ship {
         boundTarget: null                // per-weapon target override (long-press)
       });
     });
+
+    // --- hangar wings ---
+    this.squadrons = this.weapons
+      .filter(w => w.def.craft)
+      .map(w => new Squadron(this, w));
 
     // --- power ---
     this.sliders = { wep: 1, shd: 1, eng: 1, sen: 1 };
@@ -162,6 +168,7 @@ export class Ship {
   updateWeapons(dt, world) {
     for (const w of this.weapons) {
       if (w.hp <= 0) continue;                       // mount destroyed
+      if (w.def.craft) continue;                     // hangar wings fly themselves
       const energyMult = (w.def.type !== 'missile' && this.def.traits.energyChargeMult) || 1;
       const rate = (0.35 + 0.65 * Math.min(1.6, this._levelOf('wep'))) / energyMult;
       if (w.charge < 1) w.charge = Math.min(1, w.charge + dt * rate / w.def.charge);
@@ -263,7 +270,7 @@ export class Ship {
     }
     let best = 0;
     for (const w of this.weapons) {
-      if (w.hp > 0 && w.enabled && !w.def.pd) best = Math.max(best, w.def.range);
+      if (w.hp > 0 && w.enabled && !w.def.pd && w.def.range) best = Math.max(best, w.def.range);
     }
     if (!best) best = 800;
     const d = this.pos.distanceTo(t.pos);

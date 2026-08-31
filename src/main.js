@@ -94,6 +94,7 @@ const hud = new HUD({
   onSelectShip: (ship) => mission && mission.select(ship),
   onFocusDevice: (key) => mission && mission.setFocusDevice(key),
   onBindWeapon: (w) => mission && mission.bindWeapon(w),
+  onWing: (sq, action) => mission && mission.wingCommand(sq, action),
   onBehavior: (mode) => mission && mission.setBehavior(mode),
   onStop: () => mission && mission.allStop(),
   onPause: () => mission && mission.togglePause(),
@@ -128,6 +129,7 @@ class MissionRun {
     this.elapsed = 0;
     this.lostShips = [];
     this.stats = { dealt: {}, taken: {} };
+    this.salvage = 0;
     this.deviceWasLost = false;
     this.bossGenFirst = false;
     this.prize = null;
@@ -160,7 +162,14 @@ class MissionRun {
     };
     this.world.onShipKilled = (ship) => this.onShipKilled(ship);
     this.world.onShipDisabled = (ship) => {
-      hud.toast(`${ship.name} DISABLED — objective secured`);
+      if (ship.surrendered) {
+        const val = ship.def.salvage || 0;
+        this.salvage += val;
+        hud.toast(`${ship.name} CAPTURED — +${val} salvage`);
+      } else {
+        hud.toast(`${ship.name} DISABLED — objective secured`);
+      }
+      this.updateObjectiveText();
     };
   }
 
@@ -210,6 +219,16 @@ class MissionRun {
     this.world.setRangeViz(this.selection[0] || null);
     input.setFollow(this.selection[0] || null);
     hud.refreshBehavior();
+  }
+
+  /** launch or recall a hangar wing */
+  wingCommand(sq, action) {
+    if (action === 'recall') {
+      hud.toast(`${sq.def.short} WING RECALLED`);
+      return;
+    }
+    if (!sq.operable) { hud.toast(`${sq.def.short} WING UNAVAILABLE`); return; }
+    if (sq.launch(this.world)) hud.toast(`${sq.def.short} WING AWAY`);
   }
 
   /** long-press on a weapon button: bind/rebind/release it on the current target */
@@ -407,7 +426,8 @@ class MissionRun {
       missionDef: this.def,
       secondaryMet: this.result.won && this.checkSecondary(),
       lostShips: this.lostShips,
-      stats: this.stats
+      stats: this.stats,
+      salvage: this.salvage
     };
     endMission(res);
   }

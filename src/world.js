@@ -16,6 +16,7 @@ export class World {
   constructor(scene) {
     this.scene = scene;
     this.ships = [];
+    this.squadrons = [];
     this.projectiles = [];
     this.missiles = [];
     this.beams = [];
@@ -156,6 +157,7 @@ export class World {
       ship.mesh.quaternion.copy(ship.quat);
     }
     this.ships.push(ship);
+    for (const sq of ship.squadrons) this.squadrons.push(sq);
     this.scene.add(ship.mesh);
   }
 
@@ -235,7 +237,7 @@ export class World {
 
   // ====================================================== point defence ====
 
-  /** nearest hostile missile inside this PD weapon's envelope */
+  /** nearest hostile missile OR strike craft inside this PD weapon's envelope */
   findMissileTarget(ship, w) {
     let best = null, bd = Infinity;
     for (const m of this.missiles) {
@@ -243,17 +245,114 @@ export class World {
       const d = ship.pos.distanceTo(m.pos);
       if (d < w.def.range && d < bd) { bd = d; best = m; }
     }
+    // flak and PD grids swat strike craft too — that is what keeps wings honest
+    for (const sq of this.squadrons) {
+      if (sq.carrier.faction === ship.faction || !sq.launched) continue;
+      for (const c of sq.craft) {
+        if (!c.alive) continue;
+        const d = ship.pos.distanceTo(c.pos);
+        if (d < w.def.range && d < bd) { bd = d; best = { craft: c, sq, pos: c.pos }; }
+      }
+    }
     return best;
   }
 
-  firePD(ship, w, missile) {
+  firePD(ship, w, threat) {
     const from = ship.weaponWorldPos(w, _v3);
     audio.play('pd', from);
-    this.spawnBeam(from.clone(), missile.pos, w.def.color, 0.8, 0.08);
-    if (Math.random() < (w.def.pdKill || 0.5)) {
-      missile.hp = 0;
-      this.spawnExplosion(missile.pos, 22, 0xffc879);
+    this.spawnBeam(from.clone(), threat.pos, w.def.color, 0.8, 0.08);
+    if (Math.random() >= (w.def.pdKill || 0.5)) return;
+    if (threat.craft) {
+      threat.craft.hp -= 12;
+      if (threat.craft.hp <= 0) threat.sq.killCraft(threat.craft, this);
+    } else {
+      threat.hp = 0;
+      this.spawnExplosion(threat.pos, 22, 0xffc879);
     }
+  }
+
+  // ------------------------------------------------------- strike craft ----
+
+  /** a single craft's attack run: bypasses the deflector entirely */
+  craftAttack(sq, c, attack) {
+    const cdef = sq.def.craft;
+    this.spawnBeam(c.pos.clone(), attack.pos, sq.def.color, 0.6, 0.1);
+    if (attack.kind === 'missile') {
+      attack.obj.hp = 0;
+      this.spawnExplosion(attack.pos, 20, 0xffc879);
+      return;
+    }
+    if (attack.kind === 'craft') {
+      attack.obj.hp -= cdef.dmg.hull * 2;
+      if (attack.obj.hp <= 0) attack.sq.killCraft(attack.obj, this);
+      return;
+    }
+    const target = attack.obj;
+    if (!target.alive) return;
+    const mult = sq.carrier.commanderMods.dmgMult || 1;
+    target.lastAttacker = sq.carrier;
+
+    // subsystem strike — inside the shield envelope, so it always lands
+    const key = sq.pickSubsystem(target);
+    const devDmg = cdef.dmg.device * mult;
+    if (key && devDmg > 0) {
+      if (key.startsWith('w:')) {
+        const w = target.weapons.find(x => x.index === parseInt(key.slice(2), 10));
+        if (w && w.hp > 0) {
+          w.hp = Math.max(0, w.hp - devDmg);
+          if (w.hp <= 0 && this.onMessage) {
+            this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
+            audio.play('device_destroyed', target.pos);
+          }
+        }
+      } else {
+        const d = target.devices[key];
+        if (d && d.hp > 0) {
+          d.hp = Math.max(0, d.hp - devDmg);
+          if (d.hp <= 0) {
+            if (this.onMessage) this.onMessage(`${target.name}: ${key === 'shieldGen' ? 'SHIELD GENERATOR' : key.toUpperCase()} DESTROYED`);
+            audio.play('device_destroyed', target.pos);
+            this.checkDisable(target);
+          }
+        }
+      }
+      if (this.onDamage) this.onDamage(sq.carrier, target, 'device', devDmg, sq.def);
+      this.spawnDamageText(target, String(Math.round(devDmg)), '#c59bff');
+    }
+    const hullDmg = cdef.dmg.hull * mult;
+    if (hullDmg > 0) {
+      target.hull -= hullDmg;
+      if (this.onDamage) this.onDamage(sq.carrier, target, 'hull', hullDmg, sq.def);
+      this.spawnExplosion(target.pos, 14, 0xffa060, target);
+      if (target.hull <= 0) this.killShip(target, sq.carrier);
+    }
+    this.checkSurrender(target);
+  }
+
+  /** objective ships go dead in the water when their drives are gone */
+  checkDisable(target) {
+    if (target.objectiveDisable && target.devices.engines.hp <= 0 && !target.disabled) {
+      target.disabled = true;
+      target.shield = 0;
+      target.moveTarget = null;
+      audio.play('disabled');
+      if (this.onShipDisabled) this.onShipDisabled(target);
+    }
+  }
+
+  /** a Vessari hull with no drives and no guns left strikes its colours */
+  checkSurrender(target) {
+    if (target.isPlayer || target.disabled || !target.alive) return;
+    if (target.devices.engines.hp > 0) return;
+    if (target.weapons.some(w => w.hp > 0 && !w.def.craft)) return;
+    target.disabled = true;
+    target.surrendered = true;
+    target.shield = 0;
+    target.moveTarget = null;
+    target.target = null;
+    audio.play('disabled');
+    if (this.onMessage) this.onMessage(`${target.name} STRIKES COLOURS — SALVAGEABLE`);
+    if (this.onShipDisabled) this.onShipDisabled(target);
   }
 
   // ============================================================= damage ====
@@ -325,9 +424,10 @@ export class World {
       w.hp = Math.max(0, w.hp - amount);
       if (this.onDamage) this.onDamage(shooter, target, 'device', amount, wdef);
       this.spawnDamageText(target, String(Math.round(amount)), '#c59bff');
-      if (w.hp <= 0 && this.onMessage) {
-        this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
+      if (w.hp <= 0) {
+        if (this.onMessage) this.onMessage(`${target.name}: ${w.def.short} MOUNT DESTROYED`);
         audio.play('device_destroyed', target.pos);
+        this.checkSurrender(target);
       }
     } else {
       const d = target.devices[key];
@@ -338,14 +438,9 @@ export class World {
       if (d.hp <= 0) {
         if (this.onMessage) this.onMessage(`${target.name}: ${key === 'shieldGen' ? 'SHIELD GENERATOR' : key.toUpperCase()} DESTROYED`);
         audio.play('device_destroyed', target.pos);
-        if (key === 'engines' && target.objectiveDisable) {
-          target.disabled = true;
-          target.shield = 0;
-          target.moveTarget = null;
-          audio.play('disabled');
-          if (this.onShipDisabled) this.onShipDisabled(target);
-        }
+        if (key === 'engines') this.checkDisable(target);
       }
+      this.checkSurrender(target);
     }
     this.spawnExplosion(target.pos, 16, 0xb07cff, target);
     return true;
@@ -377,6 +472,7 @@ export class World {
     ship.hull = 0;
     this.spawnExplosion(ship.pos, ship.def.size * 3.2, 0xffb060);
     this.spawnExplosion(ship.pos, ship.def.size * 1.6, 0xffffff);
+    for (const sq of ship.squadrons) sq.dock(this);
     this.scene.remove(ship.mesh);
     this.clearMarkersFor(ship);
     if (this.onShipKilled) this.onShipKilled(ship, killer);
@@ -448,7 +544,7 @@ export class World {
     const wedges = new THREE.Group();     // rotates with the hull; rings don't
     group.add(wedges);
     for (const w of ship.weapons) {
-      if (w.hp <= 0) continue;
+      if (w.hp <= 0 || !w.def.range) continue;    // hangar wings have no gun range
       const r = w.def.range;
       const ringPts = [];
       for (let i = 0; i <= 64; i++) {
@@ -616,6 +712,7 @@ export class World {
     this._camPos = cameraPos;
 
     for (const s of this.ships) s.update(dt, this);
+    for (const sq of this.squadrons) sq.update(dt, this);
     this.updateDetection();
 
     // projectiles
@@ -717,6 +814,7 @@ export class World {
   }
 
   dispose() {
+    for (const sq of this.squadrons) sq.dock(this);
     for (const s of this.ships) this.scene.remove(s.mesh);
     for (const p of this.projectiles) this.scene.remove(p.sprite);
     for (const m of this.missiles) { this.scene.remove(m.sprite); this.scene.remove(m.tail); }

@@ -90,6 +90,13 @@ export function updateAI(world, dt) {
     s.target = victim;
     s.behavior = 'aggressive';
 
+    // carriers scramble their wings once the enemy is in reach
+    for (const sq of s.squadrons) {
+      if (!sq.launched && sq.operable && s.pos.distanceTo(victim.pos) < 1400) {
+        sq.launch(world);
+      }
+    }
+
     // ---- power posture ----
     if (s.shield < s.shieldMax * 0.35) {
       s.sliders.shd = 1.6; s.sliders.wep = 0.8;

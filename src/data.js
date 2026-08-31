@@ -95,7 +95,36 @@ export const WEAPONS = {
     desc: 'EM warhead that shorts devices straight through an active shield — the only way to reach subsystems early. 6 rounds.'
   },
 
+  // ------------------------------------------- SUPPORT CRAFT (hangar-only) ----
+  // Wings launch from hangar mounts, fly inside the target's shield envelope
+  // (their strikes ignore deflectors) and can be shot down by point-defence.
+  // Lost craft are rebuilt free between missions.
+  fighter_wing: {
+    id: 'fighter_wing', name: 'Interceptor Wing', short: 'INTCPT', type: 'craft', role: 'pd',
+    count: 4, craft: { speed: 210, hp: 14, dmg: { hull: 3, device: 1 }, fireCycle: 1.6 },
+    escortRadius: 380, cost: 50, color: 0x8fd8ff,
+    desc: '4 interceptors. Escort screen: they burn down incoming missiles and enemy craft near the carrier, and worry hulls in close.'
+  },
+  bomber_wing: {
+    id: 'bomber_wing', name: 'Bomber Wing', short: 'BOMBER', type: 'craft', role: 'device',
+    count: 3, craft: { speed: 160, hp: 20, dmg: { hull: 5, device: 6 }, fireCycle: 2.4 },
+    cost: 65, color: 0xffc27c,
+    desc: '3 heavy bombers. Slip inside the deflector and torch subsystems directly — shields are no protection. Flak eats them.'
+  },
+  gunboat_wing: {
+    id: 'gunboat_wing', name: 'Gunboat Wing', short: 'GUNBOAT', type: 'craft', role: 'device',
+    count: 2, craft: { speed: 140, hp: 42, dmg: { hull: 4, device: 9 }, fireCycle: 2.2, targetMounts: true },
+    cost: 60, color: 0xc8e87c,
+    desc: '2 armoured gunboats. Hunt weapon mounts — point-defence grids first — opening the way for bombers and missiles.'
+  },
+
   // ------------------------------------------------ VESSARI (enemy-only) ----
+  v_drone_wing: {
+    id: 'v_drone_wing', name: 'Drone Swarm', short: 'DRONES', type: 'craft', role: 'device',
+    count: 5, craft: { speed: 190, hp: 8, dmg: { hull: 3, device: 3 }, fireCycle: 1.8 },
+    cost: 0, enemyOnly: true, color: 0x59ffc8,
+    desc: 'Living attack drones.'
+  },
   v_plasma_arc: {
     id: 'v_plasma_arc', name: 'Plasma Arc', short: 'P-ARC', type: 'laser', role: 'shield',
     dmg: { shield: 24, hull: 2, device: 0 }, bleed: 0.05,
@@ -139,6 +168,8 @@ export const SHOP_WEAPONS = [
   'pulse_laser', 'pd_laser', 'autocannon', 'precision_laser', 'heavy_laser',
   'railgun', 'energy_shell', 'swarm_missiles', 'disruptor_missile', 'torpedo'
 ];
+// Wings purchasable for hangar mounts.
+export const SHOP_CRAFT = ['fighter_wing', 'bomber_wing', 'gunboat_wing'];
 
 // ============================================================================
 // Ship classes
@@ -215,11 +246,12 @@ export const SHIP_CLASSES = {
       { pos: [-8, 4, 12],  dir: [-0.5, 0, 0.87] },
       { pos: [ 10, 3, -6], dir: [ 0.9, 0, 0.3] },
       { pos: [-10, 3, -6], dir: [-0.9, 0, 0.3] },
-      { pos: [ 0, 6, 0],   dir: [0, 0.5, 0.6] }
+      { pos: [ 0, 6, 0],   dir: [0, 0.5, 0.6] },
+      { pos: [ 0, -4, -2], dir: [0, -1, 0], hangar: true }
     ],
     devices: { engines: 190, shieldGen: 170, sensors: 110 },
     traits: { shieldDmgMult: 1.25, energyChargeMult: 0.85 }, cost: 320, unlockAfter: 2,
-    defaultLoadout: ['energy_shell', 'energy_shell', 'pulse_laser', 'autocannon', 'pd_laser']
+    defaultLoadout: ['energy_shell', 'energy_shell', 'pulse_laser', 'autocannon', 'pd_laser', 'bomber_wing']
   },
   cr_warhammer: {
     id: 'cr_warhammer', name: 'Warhammer', className: 'Cruiser', faction: 'human',
@@ -235,11 +267,12 @@ export const SHIP_CLASSES = {
       { pos: [ 0, 6, 8],   dir: [0, 0.3, 1] },
       { pos: [ 12, 3, -8], dir: [ 0.9, 0, 0.2] },
       { pos: [-12, 3, -8], dir: [-0.9, 0, 0.2] },
-      { pos: [ 0, -5, -4], dir: [0, -0.6, 0.4] }
+      { pos: [ 0, -5, -4], dir: [0, -0.6, 0.4] },
+      { pos: [ 0, -5, 8],  dir: [0, -1, 0], hangar: true }
     ],
     devices: { engines: 220, shieldGen: 200, sensors: 130 },
     traits: {}, cost: 480, unlockAfter: 3,
-    defaultLoadout: ['railgun', 'railgun', 'energy_shell', 'heavy_laser', 'autocannon', 'pd_laser']
+    defaultLoadout: ['railgun', 'railgun', 'energy_shell', 'heavy_laser', 'autocannon', 'pd_laser', 'fighter_wing']
   },
 
   // ------------------------------------------------------------ VESSARI ----
@@ -258,6 +291,7 @@ export const SHIP_CLASSES = {
       { pos: [0, -2, 0], dir: [0, 0, 1] }
     ],
     devices: { engines: 70, shieldGen: 60, sensors: 40 },
+    salvage: 30,
     traits: {}, cost: 0, unlockAfter: 99, enemy: true,
     defaultLoadout: ['v_plasma_arc', 'v_spine_cannon'],
     aiRange: 700
@@ -276,6 +310,7 @@ export const SHIP_CLASSES = {
       { pos: [0, 3, -4],  dir: [0, 0.3, 1] }
     ],
     devices: { engines: 90, shieldGen: 80, sensors: 60 },
+    salvage: 45,
     traits: {}, cost: 0, unlockAfter: 99, enemy: true,
     defaultLoadout: ['v_plasma_arc', 'v_spine_cannon', 'v_spore_swarm'],
     aiRange: 800
@@ -294,6 +329,7 @@ export const SHIP_CLASSES = {
       { pos: [-5, 0, 0],  dir: [-0.7, 0, 0.7] }
     ],
     devices: { engines: 90, shieldGen: 100, sensors: 60 },
+    salvage: 55,
     traits: {}, cost: 0, unlockAfter: 99, enemy: true,
     defaultLoadout: ['v_leech_beam', 'v_needle_beam', 'v_plasma_arc'],
     aiRange: 600
@@ -314,6 +350,7 @@ export const SHIP_CLASSES = {
       { pos: [-9, -2, -6], dir: [-0.9, 0, 0.2] }
     ],
     devices: { engines: 130, shieldGen: 140, sensors: 80 },
+    salvage: 80,
     traits: {}, cost: 0, unlockAfter: 99, enemy: true,
     defaultLoadout: ['v_plasma_arc', 'v_plasma_arc', 'v_spine_cannon', 'v_spine_cannon', 'v_spore_swarm'],
     aiRange: 900
@@ -333,12 +370,14 @@ export const SHIP_CLASSES = {
       { pos: [ 12, 0, -4], dir: [ 0.9, 0, 0.2] },
       { pos: [-12, 0, -4], dir: [-0.9, 0, 0.2] },
       { pos: [0, -6, 4],   dir: [0, -0.7, 0.4] },
-      { pos: [0, 5, -14],  dir: [0, 0.5, -0.8] }
+      { pos: [0, 5, -14],  dir: [0, 0.5, -0.8] },
+      { pos: [0, -4, 16],  dir: [0, -1, 0], hangar: true }
     ],
     devices: { engines: 200, shieldGen: 220, sensors: 110 },
+    salvage: 150,
     traits: {}, cost: 0, unlockAfter: 99, enemy: true,
     defaultLoadout: ['v_plasma_arc', 'v_plasma_arc', 'v_spine_cannon', 'v_spine_cannon',
-                     'v_needle_beam', 'v_spore_swarm', 'v_leech_beam'],
+                     'v_needle_beam', 'v_spore_swarm', 'v_leech_beam', 'v_drone_wing'],
     aiRange: 1000
   }
 };

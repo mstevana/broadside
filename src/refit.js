@@ -4,7 +4,7 @@
 // ============================================================================
 
 import {
-  WEAPONS, SHIP_CLASSES, SHOP_WEAPONS, SHOP_SHIPS, MAX_FLEET,
+  WEAPONS, SHIP_CLASSES, SHOP_WEAPONS, SHOP_CRAFT, SHOP_SHIPS, MAX_FLEET,
   ATTRS, REPAIR, MOUNT_HP, levelForXp, makeShipRecord, HUMAN_SHIP_NAMES
 } from './data.js';
 
@@ -32,6 +32,10 @@ function roleTag(role) {
 }
 
 function weaponStatLine(w) {
+  if (w.craft) {
+    return `CRAFT ${w.count} · HP ${w.craft.hp} · SPD ${w.craft.speed} · `
+      + `HULL ${w.craft.dmg.hull}/DEV ${w.craft.dmg.device} per pass · IGNORES SHIELDS`;
+  }
   const bits = [];
   if (w.dmg.shield) bits.push(`SHD ${w.dmg.shield}`);
   if (w.dmg.hull) bits.push(`HULL ${w.dmg.hull}`);
@@ -70,12 +74,14 @@ export function renderDebrief(campaign, result, onContinue) {
 
   if (result.won) {
     const engBonus = campaign.attrs.engineering * 20;
-    const pts = m.basePoints + (result.secondaryMet ? m.secondaryPoints : 0) + engBonus;
+    const pts = m.basePoints + (result.secondaryMet ? m.secondaryPoints : 0) + engBonus
+      + (result.salvage || 0);
     const xp = m.xp + (result.secondaryMet ? m.secondaryXp : 0);
     html += `<div class="result-line"><span>Base award</span><span class="v">+${m.basePoints} pts</span></div>`;
     html += `<div class="result-line ${result.secondaryMet ? '' : 'bad'}"><span>Secondary — ${m.secondaryText}</span>`
       + `<span class="v">${result.secondaryMet ? '+' + m.secondaryPoints + ' pts' : 'NOT MET'}</span></div>`;
     if (engBonus) html += `<div class="result-line"><span>Engineering corps</span><span class="v">+${engBonus} pts</span></div>`;
+    if (result.salvage) html += `<div class="result-line"><span>Prize crews — captured hulls</span><span class="v">+${result.salvage} pts</span></div>`;
     html += `<div class="result-line"><span>Experience</span><span class="v">+${xp} XP</span></div>`;
     for (const name of result.lostShips) {
       html += `<div class="result-line bad"><span>SHIP LOST — ${name}</span><span class="v">struck from the registry</span></div>`;
@@ -177,8 +183,9 @@ export function renderRefit(campaign, cb /* { onLaunch, onMenu, onSave } */) {
     rec.slots.forEach((slot, i) => {
       const w = slot.w ? WEAPONS[slot.w] : null;
       const destroyed = slot.hp <= 0;
+      const hangar = def.slots[i].hangar;
       h += `<button class="slot-btn ${w ? '' : 'empty'} ${destroyed ? 'destroyed' : ''}" data-slot="${i}">`
-        + `<span class="t">MOUNT ${i + 1}${destroyed ? ' — DESTROYED' : ''}</span>`
+        + `<span class="t">${hangar ? 'HANGAR' : 'MOUNT ' + (i + 1)}${destroyed ? ' — DESTROYED' : ''}</span>`
         + `${w ? w.short : '— EMPTY —'}</button>`;
     });
     h += `</div>`;
@@ -237,7 +244,10 @@ export function renderRefit(campaign, cb /* { onLaunch, onMenu, onSave } */) {
 function openSlotModal(campaign, rec, slotIdx, cb, redraw) {
   const slot = rec.slots[slotIdx];
   const def = SHIP_CLASSES[rec.cls];
-  let h = `<h3>${rec.name} — MOUNT ${slotIdx + 1}</h3>`;
+  const isHangar = !!def.slots[slotIdx].hangar;
+  const catalogue = isHangar ? SHOP_CRAFT : SHOP_WEAPONS;
+  let h = `<h3>${rec.name} — ${isHangar ? 'HANGAR BAY' : 'MOUNT ' + (slotIdx + 1)}</h3>`;
+  if (isHangar) h += `<p class="d" style="font-size:9px;color:var(--text-dim);margin-bottom:8px">Wings fly inside enemy deflectors — their strikes ignore shields. Lost craft are replaced free between missions.</p>`;
 
   if (slot.hp <= 0) {
     h += `<p class="d" style="color:var(--red);font-size:10px;margin-bottom:8px">Mount destroyed in action.</p>`;
@@ -255,12 +265,13 @@ function openSlotModal(campaign, rec, slotIdx, cb, redraw) {
       h += `<h3 style="margin-top:10px">FROM STORES</h3>`;
       inv.forEach((wid, i) => {
         const w = WEAPONS[wid];
+        if (!!w.craft !== isHangar) return;
         h += `<button class="pick-item" data-inv="${i}"><div class="hd2"><span>${w.name}</span><span class="cost">fit — free</span></div>`
           + `<div class="d">${roleTag(w.role)}${weaponStatLine(w)}</div></button>`;
       });
     }
     h += `<h3 style="margin-top:10px">PROCUREMENT</h3>`;
-    for (const wid of SHOP_WEAPONS) {
+    for (const wid of catalogue) {
       const w = WEAPONS[wid];
       h += `<button class="pick-item" data-buy="${wid}" ${campaign.points < w.cost ? 'disabled' : ''}>`
         + `<div class="hd2"><span>${w.name}</span><span class="cost">${w.cost} pts</span></div>`

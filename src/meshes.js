@@ -204,3 +204,45 @@ export function makeStarfield() {
   g.add(new THREE.Points(geo, mat));
   return g;
 }
+
+// ---------------------------------------------------------- support craft ----
+
+const CRAFT_MATS = new Map();
+function craftMats(faction, color) {
+  const key = faction + ':' + color;
+  let m = CRAFT_MATS.get(key);
+  if (!m) {
+    m = {
+      hull: new THREE.MeshStandardMaterial({
+        color: faction === 'human' ? 0xa8b6c4 : 0x8a6fb0,
+        roughness: 0.5, metalness: 0.4, flatShading: true
+      }),
+      glow: new THREE.MeshBasicMaterial({ color })
+    };
+    CRAFT_MATS.set(key, m);
+  }
+  return m;
+}
+
+/** small strike craft — scaled by role so wings read apart at a glance */
+export function buildCraftMesh(wdef, faction) {
+  const g = new THREE.Group();
+  const m = craftMats(faction, wdef.color);
+  const heavy = wdef.craft.hp > 30;      // gunboat
+  const mid = wdef.craft.hp > 16;        // bomber
+  const s = heavy ? 1.5 : (mid ? 1.2 : 0.9);
+
+  g.add(box(2.4 * s, 1.4 * s, 7 * s, m.hull, 0, 0, 0));          // fuselage
+  g.add(box(8 * s, 0.7 * s, 2.2 * s, m.hull, 0, 0, -0.5 * s));   // wings
+  if (heavy) {
+    g.add(box(2 * s, 1.6 * s, 3 * s, m.hull, 0, 1.1 * s, -1 * s));
+    g.add(box(1.2 * s, 0.8 * s, 4 * s, m.hull, 3 * s, 0, 0));
+    g.add(box(1.2 * s, 0.8 * s, 4 * s, m.hull, -3 * s, 0, 0));
+  } else if (mid) {
+    g.add(box(1.6 * s, 1.6 * s, 3.4 * s, m.hull, 0, -0.9 * s, 0.5 * s)); // bomb bay
+  }
+  g.add(box(1.4 * s, 0.9 * s, 1.2 * s, m.glow, 0, 0, 3.6 * s));  // nose light
+  const e = sph(0.9 * s, m.glow, 0, 0, -4 * s);                  // engine
+  g.add(e);
+  return g;
+}

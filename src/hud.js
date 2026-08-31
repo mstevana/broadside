@@ -130,13 +130,30 @@ export class HUD {
     for (const w of ship.weapons) {
       const b = document.createElement('button');
       b.className = `wpn-btn ${w.def.type}`;
+      const sq = w.def.craft ? ship.squadrons.find(q => q.wpn === w) : null;
       b.innerHTML = `
         <div class="charge" style="height:0%"></div>
-        <span class="typ">${w.def.type.toUpperCase()}</span>
+        <span class="typ">${w.def.craft ? 'WING' : w.def.type.toUpperCase()}</span>
         <span class="ammo"></span>
         <span class="nm">${w.def.short}</span>
-        <span class="sub">${w.def.role.toUpperCase()}</span>
+        <span class="sub">${w.def.craft ? 'DOCKED' : w.def.role.toUpperCase()}</span>
         <span class="bind"></span>`;
+      if (sq) {
+        // hangar wing: tap launches or recalls, no hold-fire toggle
+        b.addEventListener('click', () => {
+          if (sq.launched) { sq.recall(); this.cb.onWing(sq, 'recall'); }
+          else this.cb.onWing(sq, 'launch');
+        });
+        row.appendChild(b);
+        this._weaponBtns.push({
+          w, sq, btn: b,
+          charge: b.querySelector('.charge'),
+          ammo: b.querySelector('.ammo'),
+          sub: b.querySelector('.sub'),
+          bind: b.querySelector('.bind')
+        });
+        continue;
+      }
       // tap: toggle hold-fire. long-press: bind weapon to the current target.
       let pressTimer = null, longFired = false;
       b.addEventListener('pointerdown', () => {
@@ -245,6 +262,18 @@ export class HUD {
     }
     for (const wb of this._weaponBtns) {
       const w = wb.w;
+      if (wb.sq) {
+        const sq = wb.sq;
+        const n = sq.aliveCount;
+        wb.charge.style.height = `${Math.round((n / sq.def.count) * 100)}%`;
+        wb.btn.classList.toggle('ready', sq.launched);
+        wb.btn.classList.toggle('destroyed', !sq.operable);
+        wb.ammo.textContent = `×${n}`;
+        const st = !sq.operable ? 'LOST'
+          : (sq.state === 'launched' ? 'RECALL' : (sq.state === 'returning' ? 'INBOUND' : 'LAUNCH'));
+        if (wb.sub.textContent !== st) wb.sub.textContent = st;
+        continue;
+      }
       wb.charge.style.height = `${Math.round(w.charge * 100)}%`;
       wb.btn.classList.toggle('ready', w.charge >= 1 && w.enabled && w.hp > 0);
       wb.btn.classList.toggle('destroyed', w.hp <= 0);
