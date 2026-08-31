@@ -386,7 +386,7 @@ export class World {
       if (wdef.empThroughShields && wdef.dmg.device > 0) {
         deviceHit = this.resolveDeviceDamage(shooter, wdef, target);
       }
-      if (drained > 0) this.spawnShieldFlash(target);
+      if (drained > 0) this.spawnShieldFlash(target, shooter.pos);
       if (target.isPlayer && !target.shieldUp && this.onMessage) {
         this.onMessage(`${target.name}: SHIELD DOWN`);
         audio.play('shield_down');
@@ -472,6 +472,7 @@ export class World {
     ship.hull = 0;
     this.spawnExplosion(ship.pos, ship.def.size * 3.2, 0xffb060);
     this.spawnExplosion(ship.pos, ship.def.size * 1.6, 0xffffff);
+    this.spawnDebris(ship);
     for (const sq of ship.squadrons) sq.dock(this);
     this.scene.remove(ship.mesh);
     this.clearMarkersFor(ship);
@@ -480,19 +481,64 @@ export class World {
 
   // ============================================================ effects ====
 
-  spawnShieldFlash(ship) {
+  spawnShieldFlash(ship, fromPos) {
     audio.play('shield_hit', ship.pos);
     const r = ship.def.size * 1.35;
+    // a bright cap where the shot landed, fading into the whole envelope
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(r, 12, 8),
+      new THREE.SphereGeometry(r, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.42),
       new THREE.MeshBasicMaterial({
-        color: 0x35c8ff, transparent: true, opacity: 0.32,
+        color: 0x35c8ff, transparent: true, opacity: 0.38, side: THREE.DoubleSide,
         depthWrite: false, blending: THREE.AdditiveBlending
       })
     );
     mesh.position.copy(ship.pos);
+    if (fromPos) {
+      _v1.copy(fromPos).sub(ship.pos).normalize();
+      mesh.quaternion.setFromUnitVectors(_Y_AXIS, _v1);
+    }
     this.scene.add(mesh);
-    this.effects.push({ mesh, ttl: 0.22, ttlMax: 0.22, follow: ship, kind: 'shield' });
+    this.effects.push({ mesh, ttl: 0.26, ttlMax: 0.26, follow: ship, kind: 'shield' });
+  }
+
+  /** tumbling wreckage thrown clear when a hull breaks up */
+  spawnDebris(ship) {
+    const n = Math.min(14, 5 + Math.round(ship.def.size / 6));
+    const mat = new THREE.MeshStandardMaterial({
+      color: ship.isPlayer ? 0x8b98a6 : 0x6a5588,
+      roughness: 0.7, metalness: 0.35, flatShading: true,
+      transparent: true, opacity: 1
+    });
+    for (let i = 0; i < n; i++) {
+      const sz = ship.def.size * (0.06 + Math.random() * 0.16);
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(sz, sz * (0.4 + Math.random()), sz * (0.6 + Math.random() * 1.8)),
+        mat
+      );
+      const pos = ship.pos.clone().add(_v1.randomDirection().multiplyScalar(ship.def.size * 0.4));
+      mesh.position.copy(pos);
+      mesh.quaternion.copy(ship.quat);
+      this.scene.add(mesh);
+      this.effects.push({
+        mesh, kind: 'debris', ttl: 3.5 + Math.random() * 2.5, ttlMax: 6,
+        pos, vel: _v1.randomDirection().multiplyScalar(14 + Math.random() * 46).add(ship.vel).clone(),
+        spin: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 }
+      });
+    }
+  }
+
+  /** venting plasma from a wrecked subsystem — a running damage read-out */
+  spawnSmoke(ship, offset) {
+    const spr = this._makeSprite(0xff8a4a, ship.def.size * 0.5);
+    spr.material.opacity = 0.35;
+    const off = offset ? offset.clone() : new THREE.Vector3();
+    spr.position.copy(off).applyQuaternion(ship.quat).add(ship.pos);
+    this.scene.add(spr);
+    this.effects.push({
+      mesh: spr, kind: 'smoke', ttl: 1.4, ttlMax: 1.4, follow: ship, off,
+      size: ship.def.size * 0.5,
+      drift: _v1.randomDirection().setY(Math.abs(_v1.y)).clone()
+    });
   }
 
   /** floating combat number above a ship (rate-limited per target) */
@@ -793,8 +839,24 @@ export class World {
         e.mesh.scale.set(sc, sc, 1);
         e.mesh.material.opacity = k;
       } else if (e.kind === 'shield') {
-        e.mesh.material.opacity = 0.32 * k;
+        e.mesh.material.opacity = 0.38 * k;
+        e.mesh.scale.setScalar(1 + (1 - k) * 0.12);
         if (e.follow) e.mesh.position.copy(e.follow.pos);
+      } else if (e.kind === 'debris') {
+        e.pos.addScaledVector(e.vel, dt);
+        e.vel.multiplyScalar(1 - 0.15 * dt);
+        e.mesh.position.copy(e.pos);
+        e.mesh.rotation.x += e.spin.x * dt;
+        e.mesh.rotation.y += e.spin.y * dt;
+        e.mesh.material.opacity = Math.min(1, k * 1.6);
+      } else if (e.kind === 'smoke') {
+        if (e.follow && e.follow.alive) {
+          _v1.copy(e.off).applyQuaternion(e.follow.quat).add(e.follow.pos);
+          e.mesh.position.copy(_v1).addScaledVector(e.drift, (1 - k) * 40);
+        }
+        const sc = e.size * (0.6 + (1 - k) * 1.5);
+        e.mesh.scale.set(sc, sc, 1);
+        e.mesh.material.opacity = 0.35 * k;
       } else if (e.kind === 'text') {
         e.mesh.position.y += e.vy * dt;
         e.mesh.material.opacity = Math.min(1, k * 2.2);
@@ -810,7 +872,29 @@ export class World {
       }
     }
 
+    this.updateSmoke(dt);
     this.updateMarkers(dt);
+  }
+
+  /** ships trail plasma from destroyed devices and wrecked mounts */
+  updateSmoke(dt) {
+    for (const s of this.ships) {
+      if (!s.alive || !s.detected) continue;
+      let vents = 0;
+      for (const k of ['engines', 'shieldGen', 'sensors']) if (s.devices[k].hp <= 0) vents++;
+      for (const w of s.weapons) if (w.hp <= 0) vents++;
+      if (s.hull < s.hullMax * 0.35) vents++;
+      if (!vents) continue;
+      s._smokeCd = (s._smokeCd || 0) - dt * vents;
+      if (s._smokeCd > 0) continue;
+      s._smokeCd = 0.22;
+      _v2.set(
+        (Math.random() - 0.5) * s.def.size * 0.7,
+        (Math.random() - 0.5) * s.def.size * 0.4,
+        (Math.random() - 0.5) * s.def.size * 1.2
+      );
+      this.spawnSmoke(s, _v2);
+    }
   }
 
   dispose() {

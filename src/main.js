@@ -643,6 +643,17 @@ function toggleSound() {
   audio.setMuted(!audio.muted);
   syncSoundButtons();
 }
+for (const [bus, id] of [['music', 'vol-music'], ['sfx', 'vol-sfx']]) {
+  const el = $(id), out = $(id + '-o');
+  el.value = Math.round(audio.vol[bus] * 100);
+  out.textContent = el.value;
+  el.addEventListener('input', () => {
+    out.textContent = el.value;
+    audio.ensure();
+    audio.setVolume(bus, el.value / 100);
+  });
+}
+
 $('btn-sound').addEventListener('click', toggleSound);
 $('btn-sound-menu').addEventListener('click', toggleSound);
 syncSoundButtons();
@@ -678,6 +689,13 @@ frame();
 
 showScreen('screen-menu');
 music.setTrack('adrift');   // queued until the first user gesture unlocks audio
+
+// installable / offline
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* file:// or blocked */ });
+  });
+}
 
 // debug / test handle
 window.BS = {

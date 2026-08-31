@@ -338,10 +338,12 @@ export class Ship {
     this.mesh.position.copy(this.pos);
     this.mesh.quaternion.copy(this.quat);
     for (const p of this.spinParts) p.rotation.z += dt * 0.8;   // habitat ring
+    // engine glow reacts to actual thrust, not just speed
     const thrust = this.vel.length() / Math.max(1, this.def.speed);
+    const burning = this.moveTarget ? 1 : 0.45;
     for (const e of this.engineGlows) {
-      const s = 0.7 + thrust * 0.9;
-      e.scale.set(s, s, s + thrust * 1.5);
+      const g = (0.6 + thrust * 1.1) * burning;
+      e.scale.set(g, g, g + thrust * 3.2 * burning);
     }
   }
 

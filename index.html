@@ -7,6 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#070b12">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%9B%B0%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <title>BROADSIDE</title>
 <style>
@@ -377,6 +379,11 @@
       <button class="big-btn" id="btn-skirmish">SKIRMISH</button>
       <button class="big-btn" id="btn-howto">HOW TO PLAY</button>
       <button class="big-btn" id="btn-sound-menu">SOUND: ON</button>
+    </div>
+    <div id="audio-settings" class="panel-box" style="margin-top:18px">
+      <h3>AUDIO</h3>
+      <div class="eslider"><label>MUSIC</label><input type="range" id="vol-music" min="0" max="100" value="34"><output id="vol-music-o">34</output></div>
+      <div class="eslider"><label>EFFECTS</label><input type="range" id="vol-sfx" min="0" max="100" value="80"><output id="vol-sfx-o">80</output></div>
     </div>
     <div id="howto" class="panel-box hidden" style="margin-top:20px">
       <h3>CONTROLS</h3>

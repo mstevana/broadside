@@ -29,6 +29,22 @@ class AudioEngine {
     this._cam = { x: 0, y: 0, z: 300, rx: 1, ry: 0, rz: 0 };
     this._pending = [];
     this._amb = null;
+    this.vol = { music: 0.34, sfx: 0.8 };
+    try {
+      const v = JSON.parse(localStorage.getItem('broadside_vol'));
+      if (v && typeof v.music === 'number' && typeof v.sfx === 'number') this.vol = v;
+    } catch (e) { /* ignore */ }
+  }
+
+  get ready() { return !!this.ctx; }
+
+  /** set a bus volume ('music' | 'sfx'), 0..1, and persist it */
+  setVolume(bus, value) {
+    this.vol[bus] = Math.max(0, Math.min(1, value));
+    try { localStorage.setItem('broadside_vol', JSON.stringify(this.vol)); } catch (e) { /* ignore */ }
+    if (!this.ctx) return;
+    const node = bus === 'music' ? this.musicBus : this.sfxBus;
+    node.gain.setTargetAtTime(this.vol[bus], this.ctx.currentTime, 0.05);
   }
 
   // ------------------------------------------------------------ lifecycle ----
@@ -51,12 +67,12 @@ class AudioEngine {
     this.rev.buffer = this._impulse(2.8, 2.4);
     this.rev.connect(this.master);
 
-    this.sfxBus = ctx.createGain(); this.sfxBus.gain.value = 0.8;
+    this.sfxBus = ctx.createGain(); this.sfxBus.gain.value = this.vol.sfx;
     this.sfxBus.connect(this.master);
     this.sfxSend = ctx.createGain(); this.sfxSend.gain.value = 0.16;
     this.sfxBus.connect(this.sfxSend); this.sfxSend.connect(this.rev);
 
-    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 0.34;
+    this.musicBus = ctx.createGain(); this.musicBus.gain.value = this.vol.music;
     this.musicBus.connect(this.master);
     this.musicSend = ctx.createGain(); this.musicSend.gain.value = 0.5;
     this.musicBus.connect(this.musicSend); this.musicSend.connect(this.rev);
