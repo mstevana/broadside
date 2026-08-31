@@ -511,3 +511,41 @@ export const HUMAN_SHIP_NAMES = [
   'UES Falchion', 'UES Sabre', 'UES Rapier', 'UES Bulwark', 'UES Warhammer',
   'UES Talwar', 'UES Estoc', 'UES Claymore', 'UES Glaive', 'UES Partisan'
 ];
+
+// ============================================================================
+// Skirmish — endless escalating waves, outside the campaign.
+// ============================================================================
+
+export const SKIRMISH_FLEET = [
+  ['hc_falchion', 'UES Falchion'],
+  ['dd_sabre',    'UES Sabre'],
+  ['cr_bulwark',  'UES Bulwark']
+];
+
+/** roster for skirmish wave n (1-based): escalating mix of Vessari hulls */
+export function skirmishWave(n) {
+  const ships = [];
+  const add = (cls, count) => { for (let i = 0; i < count; i++) ships.push(cls); };
+  add('vx_stinger', 1 + Math.floor(n / 2));
+  if (n >= 2) add('vx_mantis', Math.min(3, Math.floor(n / 2)));
+  if (n >= 4) add('vx_lamprey', Math.min(2, Math.floor((n - 2) / 3)));
+  if (n >= 5) add('vx_basilisk', Math.min(3, Math.floor((n - 3) / 2)));
+  if (n >= 8 && n % 4 === 0) add('vx_hierophant', 1);
+  // ring them around the arena at mixed altitudes
+  return ships.map((cls, i) => {
+    const a = (i / ships.length) * Math.PI * 2 + n;
+    const r = 1900 + (i % 3) * 260;
+    return { cls, at: [Math.sin(a) * r, ((i % 3) - 1) * 160, Math.cos(a) * r + 400] };
+  });
+}
+
+export const SKIRMISH_MISSION = {
+  id: 'skirmish', name: 'SKIRMISH', region: 'Unregistered deep — free engagement',
+  briefing: 'No orders, no extraction, no reinforcements. Wave after wave until the fleet is gone.\n\n'
+    + 'Every hull you destroy or capture is scored. Repairs between waves are automatic but partial — '
+    + 'husband your ships and your reserve cell.',
+  secondaryText: 'Survive as long as possible.',
+  waves: [], skirmish: true,
+  basePoints: 0, secondaryPoints: 0, xp: 0, secondaryXp: 0,
+  music: 'broadside'
+};

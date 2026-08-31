@@ -32,6 +32,7 @@ export class HUD {
       $('btn-speed').textContent = cb.onSpeed();
     });
     $('btn-stop').addEventListener('click', () => cb.onStop());
+    $('tut-skip').addEventListener('click', () => cb.onSkipTutorial());
     $('btn-behavior').addEventListener('click', () => {
       const prim = cb.getPrimary();
       if (!prim) return;
@@ -80,6 +81,14 @@ export class HUD {
   }
 
   setSpeed(label) { $('btn-speed').textContent = label; }
+
+  /** tutorial banner; pass null to clear */
+  tutorial(text) {
+    const el = $('tutorial');
+    if (!text) { el.classList.add('hidden'); return; }
+    $('tut-text').textContent = text;
+    el.classList.remove('hidden');
+  }
 
   // ---------------------------------------------------------- ship cards ----
 

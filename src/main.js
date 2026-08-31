@@ -3,16 +3,17 @@
 // ============================================================================
 
 import * as THREE from 'three';
-import { MISSIONS, SHIP_CLASSES, makeShipRecord } from './data.js';
+import { MISSIONS, SHIP_CLASSES, makeShipRecord, SKIRMISH_FLEET, SKIRMISH_MISSION, skirmishWave } from './data.js';
 import { Ship } from './ship.js';
 import { World } from './world.js';
 import { updateAI } from './ai.js';
 import { InputController } from './input.js';
 import { HUD } from './hud.js';
-import { renderDebrief, renderRefit, commanderMods, closeModal } from './refit.js';
+import { renderDebrief, renderRefit, renderSkirmishDebrief, commanderMods, closeModal } from './refit.js';
 import { makeStarfield } from './meshes.js';
 import { audio } from './audio.js';
 import { music } from './music.js';
+import { Tutorial } from './tutorial.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'broadside_save_v1';
@@ -99,6 +100,7 @@ const hud = new HUD({
   onStop: () => mission && mission.allStop(),
   onPause: () => mission && mission.togglePause(),
   onSpeed: () => mission ? mission.cycleSpeed() : '1×',
+  onSkipTutorial: () => { if (mission) { mission.tutorial = null; hud.tutorial(null); } },
   onToggleFollow: () => {
     input.follow = !input.follow;
     return input.follow;
@@ -130,6 +132,10 @@ class MissionRun {
     this.lostShips = [];
     this.stats = { dealt: {}, taken: {} };
     this.salvage = 0;
+    this.skirmish = !!missionDef.skirmish;
+    this.waveNum = 0;
+    this.kills = 0;
+    this.tutorial = null;
     this.deviceWasLost = false;
     this.bossGenFirst = false;
     this.prize = null;
@@ -279,6 +285,7 @@ class MissionRun {
       s.moveTarget = point.clone().add(sel.length > 1 ? offset : new THREE.Vector3());
       s._pursuitOrder = false;    // explicit orders override aggressive pursuit
     }
+    this._tutMoved = true;
   }
 
   allStop() {
@@ -287,12 +294,14 @@ class MissionRun {
   }
 
   togglePause() {
+    this._tutSpeed = true;
     this.paused = !this.paused;
     hud.setPaused(this.paused);
     if (this.paused) hud.toast('PAUSED — orders can still be issued', 2000);
   }
 
   cycleSpeed() {
+    this._tutSpeed = true;
     this.timeScale = this.timeScale >= 4 ? 1 : this.timeScale * 2;
     return `${this.timeScale}×`;
   }
@@ -300,6 +309,7 @@ class MissionRun {
   // ---- events ----
 
   onShipKilled(ship) {
+    if (!ship.isPlayer) { this.kills++; this.salvage += Math.round((ship.def.salvage || 0) * 0.4); }
     if (ship.isPlayer) {
       this.lostShips.push(ship.name);
       hud.toast(`${ship.name} DESTROYED`);
@@ -320,6 +330,10 @@ class MissionRun {
 
   updateObjectiveText() {
     const left = this.world.ships.filter(s => !s.isPlayer && s.alive && !s.disabled).length;
+    if (this.skirmish) {
+      hud.setObjective(`SKIRMISH — wave ${this.waveNum} · ${left} hostiles · ${this.kills} kills · score ${this.salvage}`);
+      return;
+    }
     const pending = this.waves.some(w => !w.spawned);
     if (this.def.special === 'disable_escape' && this.prize && this.prize.alive && !this.prize.disabled) {
       hud.setObjective(`${this.def.name} — disable the Lamprey's ENGINES before it escapes (${left} hostiles)`);
@@ -358,6 +372,29 @@ class MissionRun {
     }
     dt *= this.timeScale;
     this.elapsed += dt;
+
+    // skirmish: endless escalating waves, with a partial repair between them
+    if (this.skirmish) {
+      const hostiles = this.world.ships.some(s => !s.isPlayer && s.alive && !s.disabled);
+      if (!hostiles) {
+        this._waveGap = (this._waveGap || 0) - dt;
+        if (this.waveNum === 0 || this._waveGap <= 0) {
+          this.waveNum++;
+          if (this.waveNum > 1) {
+            for (const p of this.world.playerShips()) {
+              p.hull = Math.min(p.hullMax, p.hull + p.hullMax * 0.12);
+              for (const d of Object.values(p.devices)) d.hp = Math.max(d.hp, d.max * 0.5);
+              for (const w of p.weapons) { if (w.ammo !== Infinity) w.ammo = w.def.ammo; }
+            }
+            hud.toast(`WAVE ${this.waveNum} INBOUND — hulls patched, magazines restocked`, 3200);
+          }
+          this.spawnWave({ ships: skirmishWave(this.waveNum), delay: 0 });
+          this._waveGap = 0;
+        }
+      } else {
+        this._waveGap = 8;
+      }
+    }
 
     // wave triggers
     const anyAlive = this.world.ships.some(s => !s.isPlayer && s.alive && !s.disabled);
@@ -398,7 +435,10 @@ class MissionRun {
       const hostilesLeft = this.world.ships.some(s => !s.isPlayer && s.alive && !s.disabled);
 
       if (playersLeft === 0) {
-        this.finish(false, 'All ships lost.');
+        this.finish(false, this.skirmish
+          ? `Fleet destroyed on wave ${this.waveNum}.` : 'All ships lost.');
+      } else if (this.skirmish) {
+        // skirmish runs until the fleet dies
       } else if (this.def.special === 'disable_escape' && this.prize && this.prize.alive &&
                  !this.prize.disabled && this.prize.pos.length() > this.def.escapeRadius) {
         this.finish(false, 'The Lamprey escaped into the Drift with the datacore.');
@@ -427,7 +467,11 @@ class MissionRun {
       secondaryMet: this.result.won && this.checkSecondary(),
       lostShips: this.lostShips,
       stats: this.stats,
-      salvage: this.salvage
+      salvage: this.salvage,
+      skirmish: this.skirmish,
+      waveNum: this.waveNum,
+      kills: this.kills,
+      score: this.salvage + this.kills * 10 + Math.max(0, this.waveNum - 1) * 25
     };
     endMission(res);
   }
@@ -440,6 +484,7 @@ class MissionRun {
 // --------------------------------------------------------- state changes ----
 
 let fleetSnapshot = null;
+let skirmishRun = null;
 
 function currentMissionDef() {
   return MISSIONS[Math.min(campaign.missionIndex, MISSIONS.length - 1)];
@@ -489,11 +534,60 @@ function launchMission() {
   for (const s of SCREENS) $(s).classList.add('hidden');
   mission = new MissionRun(currentMissionDef(), campaign);
   mission.initUI();
+  if (campaign.missionIndex === 0 && !campaign.tutorialSeen) {
+    campaign.tutorialSeen = true;
+    saveCampaign();
+    mission.tutorial = new Tutorial(mission, hud);
+  }
   music.setTrack(currentMissionDef().music || 'signal');
   audio.startAmbience();
 }
 
+// ------------------------------------------------------------- skirmish ----
+
+const SKIRMISH_KEY = 'broadside_skirmish_best';
+
+function skirmishBest() {
+  try { return JSON.parse(localStorage.getItem(SKIRMISH_KEY)) || { wave: 0, score: 0 }; }
+  catch (e) { return { wave: 0, score: 0 }; }
+}
+
+function startSkirmish() {
+  skirmishRun = {
+    missionIndex: 0,
+    fleet: SKIRMISH_FLEET.map(([cls, name]) => makeShipRecord(cls, name)),
+    inventory: [], points: 0, xp: 0,
+    attrs: { combat: 0, engineering: 0, science: 0 },
+    done: false, isSkirmish: true
+  };
+  for (const s of SCREENS) $(s).classList.add('hidden');
+  mission = new MissionRun(SKIRMISH_MISSION, skirmishRun);
+  mission.initUI();
+  // no briefing, no orders phase: skirmish starts weapons-free
+  for (const p of mission.world.playerShips()) p.behavior = 'aggressive';
+  hud.refreshBehavior();
+  music.setTrack('broadside');
+  audio.startAmbience();
+  hud.toast('SKIRMISH — hold as long as you can', 3400);
+}
+
 function endMission(res) {
+  if (res.skirmish) {
+    const best = skirmishBest();
+    const isBest = res.score > best.score;
+    if (isBest) {
+      try { localStorage.setItem(SKIRMISH_KEY, JSON.stringify({ wave: res.waveNum, score: res.score })); }
+      catch (e) { /* private mode */ }
+    }
+    mission.dispose();
+    mission = null;
+    skirmishRun = null;
+    audio.stopAmbience();
+    music.setTrack('dirge');
+    showScreen('screen-debrief');
+    renderSkirmishDebrief(res, isBest ? { wave: res.waveNum, score: res.score } : best, isBest, gotoMenu);
+    return;
+  }
   // fold surviving ship state back into records / restore snapshot on failure
   if (res.won) {
     const survivors = mission.world.ships.filter(s => s.isPlayer && s.alive);
@@ -526,6 +620,7 @@ $('btn-continue').addEventListener('click', () => {
   campaign = loadCampaign() || newCampaign();
   gotoRefit();
 });
+$('btn-skirmish').addEventListener('click', startSkirmish);
 $('btn-howto').addEventListener('click', () => $('howto').classList.toggle('hidden'));
 $('btn-continue').disabled = !campaign;
 
@@ -564,7 +659,12 @@ function frame() {
     mission.update(dt);
     input.updateCamera(dt);
     hudAccum += dt;
-    if (hudAccum > 0.1) { hudAccum = 0; hud.update(); if (mission && !mission.paused) mission.updateObjectiveText(); }
+    if (hudAccum > 0.1) {
+      hudAccum = 0;
+      hud.update();
+      if (mission && !mission.paused) mission.updateObjectiveText();
+      if (mission && mission.tutorial) mission.tutorial.update(performance.now());
+    }
   } else {
     // idle menu camera drift
     const t = performance.now() * 0.00004;

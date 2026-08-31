@@ -205,6 +205,22 @@
   }
   #toast.show { opacity: 1; }
 
+  /* ---------- tutorial banner ---------- */
+  #tutorial {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(96px + var(--sab)); width: min(440px, 74vw);
+    background: rgba(10,22,36,0.94); border: 1px solid var(--cyan-dim);
+    border-radius: 10px; padding: 10px 12px; font-size: 10px; line-height: 1.5;
+    color: var(--text); letter-spacing: 0.02em;
+    display: flex; gap: 10px; align-items: center;
+    box-shadow: 0 0 18px rgba(53,200,255,0.16);
+  }
+  #tutorial #tut-text { flex: 1; }
+  #tut-skip {
+    border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px;
+    font-size: 9px; color: var(--text-dim); letter-spacing: 0.08em; flex-shrink: 0;
+  }
+
   /* ---------- fullscreen overlay screens ---------- */
   .screen {
     position: fixed; inset: 0; z-index: 20; background: radial-gradient(ellipse at 50% 30%, #0d1626 0%, #070b12 70%);
@@ -347,6 +363,7 @@
   </div>
 
   <div id="toast"></div>
+  <div id="tutorial" class="hidden"><span id="tut-text"></span><button id="tut-skip">SKIP</button></div>
 </div>
 
 <!-- ============ MAIN MENU ============ -->
@@ -357,6 +374,7 @@
     <div class="menu-btns">
       <button class="big-btn" id="btn-continue">CONTINUE CAMPAIGN</button>
       <button class="big-btn" id="btn-newgame">NEW CAMPAIGN</button>
+      <button class="big-btn" id="btn-skirmish">SKIRMISH</button>
       <button class="big-btn" id="btn-howto">HOW TO PLAY</button>
       <button class="big-btn" id="btn-sound-menu">SOUND: ON</button>
     </div>

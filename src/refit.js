@@ -314,3 +314,36 @@ function openSlotModal(campaign, rec, slotIdx, cb, redraw) {
     });
   });
 }
+
+// =========================================================== skirmish ====
+
+export function renderSkirmishDebrief(res, best, isBest, onContinue) {
+  $('db-title').textContent = 'SKIRMISH OVER';
+  $('db-title').style.color = 'var(--amber)';
+  $('db-sub').textContent = res.failReason || '';
+  let html = '';
+  html += `<div class="result-line"><span>Waves survived</span><span class="v">${res.waveNum - 1}</span></div>`;
+  html += `<div class="result-line"><span>Hulls destroyed or captured</span><span class="v">${res.kills}</span></div>`;
+  html += `<div class="result-line"><span>Salvage recovered</span><span class="v">${res.salvage}</span></div>`;
+  html += `<div class="result-line"><span><b>FINAL SCORE</b></span><span class="v"><b>${res.score}</b></span></div>`;
+  html += isBest
+    ? `<p style="margin-top:10px;color:var(--green)">NEW PERSONAL BEST</p>`
+    : `<p class="dim" style="margin-top:10px">Personal best: wave ${best.wave - 1 > 0 ? best.wave - 1 : 0}, score ${best.score}</p>`;
+
+  if (res.stats) {
+    const dealt = Object.entries(res.stats.dealt)
+      .map(([id, d]) => ({ id, ...d, total: d.shield + d.hull + d.device }))
+      .sort((a, b) => b.total - a.total);
+    if (dealt.length) {
+      html += `<h3 style="margin-top:14px;color:var(--amber);font-size:11px;letter-spacing:0.14em">GUNNERY REPORT</h3>`;
+      for (const d of dealt.slice(0, 10)) {
+        const w = WEAPONS[d.id];
+        html += `<div class="result-line"><span>${w ? w.name : d.id}</span>`
+          + `<span class="v">SHD ${Math.round(d.shield)} · HULL ${Math.round(d.hull)} · DEV ${Math.round(d.device)}</span></div>`;
+      }
+    }
+  }
+  $('db-body').innerHTML = html;
+  $('btn-db-next').textContent = 'MAIN MENU';
+  $('btn-db-next').onclick = onContinue;
+}
