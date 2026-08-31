@@ -282,7 +282,7 @@ export const SHIP_CLASSES = {
     id: 'vx_stinger', name: 'Stinger', className: 'Drone Corvette', faction: 'vessari',
     role: 'Skirmisher',
     desc: 'Fast bio-drone. Shield outclasses its mass; the husk under it is paper.',
-    hull: 240, shield: 240, shieldRegen: 8,
+    hull: 200, shield: 190, shieldRegen: 5,
     speed: 84, accel: 18, turn: 0.7,
     reactor: 15, reserve: 90, sensors: 1500,
     size: 22,
@@ -318,9 +318,9 @@ export const SHIP_CLASSES = {
   vx_lamprey: {
     id: 'vx_lamprey', name: 'Lamprey', className: 'Leech Destroyer', faction: 'vessari',
     role: 'Shield drain / support',
-    desc: 'Latches onto deflectors and drinks them dry, feeding its own shield. Slow for a Vessari hull.',
+    desc: 'Latches onto deflectors and drinks them dry, feeding its own shield. Wallowing slow for a Vessari hull.',
     hull: 360, shield: 520, shieldRegen: 12,
-    speed: 60, accel: 11, turn: 0.5,
+    speed: 46, accel: 10, turn: 0.5,
     reactor: 24, reserve: 130, sensors: 1800,
     size: 31,
     slots: [
@@ -399,7 +399,7 @@ export const MISSIONS = [
     secondaryText: 'Finish the engagement with the Falchion above 75% hull.',
     waves: [
       { delay: 0, ships: [ { cls: 'vx_stinger', at: [900, 0, 1100] } ] },
-      { delay: 55, ships: [ { cls: 'vx_stinger', at: [-1100, 60, 1300] } ] }
+      { delay: 38, ships: [ { cls: 'vx_stinger', at: [-1000, 60, 1100] } ] }
     ],
     music: 'signal',
     basePoints: 130, secondaryPoints: 45, xp: 110, secondaryXp: 50,
@@ -428,13 +428,13 @@ export const MISSIONS = [
     secondaryText: 'Disable the Lamprey with its hull above 50% (do not wreck the prize).',
     waves: [
       { delay: 0, ships: [
-        { cls: 'vx_lamprey', at: [0, 0, 1600], objective: 'disable', flee: [0, 0, 9000] },
+        { cls: 'vx_lamprey', at: [0, 0, 900], objective: 'disable', flee: [0, 0, 11000], fleeAfter: 60 },
         { cls: 'vx_stinger', at: [-350, 0, 1400] }, { cls: 'vx_stinger', at: [350, 40, 1400] }
       ] }
     ],
     music: 'broadside',
     basePoints: 190, secondaryPoints: 60, xp: 150, secondaryXp: 65,
-    secondary: 'prizeIntact', special: 'disable_escape', escapeRadius: 7800
+    secondary: 'prizeIntact', special: 'disable_escape', escapeRadius: 9000
   },
   {
     id: 'm4', name: 'BREAKWATER', region: 'Anchorage 7 — outer wall',
@@ -459,7 +459,8 @@ export const MISSIONS = [
     secondaryText: 'Destroy the Hierophant\'s shield generator before its hull falls below 50%.',
     waves: [
       { delay: 0, ships: [ { cls: 'vx_mantis', at: [700, 0, 1500] }, { cls: 'vx_mantis', at: [-700, 60, 1500] } ] },
-      { delay: 40, ships: [ { cls: 'vx_hierophant', at: [0, 0, 2300], boss: true }, { cls: 'vx_stinger', at: [300, -60, 2100] }, { cls: 'vx_stinger', at: [-300, 60, 2100] } ] }
+      { delay: 40, ships: [ { cls: 'vx_hierophant', at: [0, 0, 2300], boss: true }, { cls: 'vx_stinger', at: [300, -60, 2100] }, { cls: 'vx_stinger', at: [-300, 60, 2100] } ] },
+      { delay: 150, ships: [ { cls: 'vx_basilisk', at: [1500, 80, 1900] }, { cls: 'vx_basilisk', at: [-1500, -80, 1900] } ] }
     ],
     music: 'leviathan',
     basePoints: 300, secondaryPoints: 90, xp: 240, secondaryXp: 90,

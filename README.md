@@ -182,6 +182,28 @@ Each class is built once into a prototype and cloned per ship, so twelve hulls
 in a skirmish share one set of merged geometry and materials (only the
 Vessari's pulsing veins get a per-ship material).
 
+## Playtesting
+
+The campaign is validated by an automated harness rather than by hand:
+
+```sh
+node tools/playtest.js 4              # 4 full campaigns, all five missions
+node tools/playtest.js 3 --mission 5  # just the finale
+node tools/playtest.js 2 --verbose    # per-mission fleet state
+```
+
+`tools/bot.js` is a bot commander that plays the way a competent human would —
+concentrating the fleet on one target, cracking the shield before switching to
+hull weapons, focusing engines then the shield generator once the deflector is
+down, managing reactor power and launching wings — and the harness buys a
+sensible refit between missions. It reports win rate, duration and fleet
+attrition per mission, so a balance change can be checked in minutes instead of
+by grinding five missions by hand.
+
+This is how mission 3 was found to be **mathematically unwinnable**: the
+Lamprey bolted at spawn 2 900 units ahead of the fleet and simply outran it,
+every single run.
+
 ## Code layout
 
 ```
@@ -198,6 +220,8 @@ src/craft.js    support-craft squadrons: launch, strike runs, escort, recovery
 src/tutorial.js contextual first-mission tutorial script
 src/merge.js    tiny geometry merger (keeps each hull to a few draw calls)
 src/textures.js procedural texture generation (plating, carapace, decals)
+tools/bot.js    bot commander used for automated balance playtesting
+tools/playtest.js  headless campaign playtest harness
 sw.js           service worker (offline precache)
 manifest.webmanifest, icons/  PWA install metadata
 src/hud.js      combat DOM HUD

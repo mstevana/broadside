@@ -32,13 +32,29 @@ export function updateAI(world, dt) {
     if (s._aiTick > 0) continue;
     s._aiTick = 0.8 + Math.random() * 0.6;
 
-    // fleeing objective ship: run for the exit, never fight back much
+    // Objective ship with an escape route. It does NOT bolt at spawn — that
+    // made the chase mathematically unwinnable — it holds with its escort
+    // until it is engaged (or its nerve breaks), then runs for the exit.
     if (s.fleePoint) {
-      s.behavior = 'defensive';
-      s.sliders.eng = 1.8; s.sliders.shd = 1.2; s.sliders.wep = 0.5; s.sliders.sen = 0.5;
-      if (!s.moveTarget || s.moveTarget.distanceTo(s.fleePoint) > 100) {
-        s.moveTarget = s.fleePoint.clone();
+      if (!s._fleeing) {
+        const engaged = s.hull < s.hullMax || s.shield < s.shieldMax * 0.92;
+        if (engaged || world.time > (s.fleeAfter || 45)) {
+          s._fleeing = true;
+          if (world.onMessage) world.onMessage(`${s.name} IS RUNNING FOR THE DRIFT`);
+        }
       }
+      if (s._fleeing) {
+        s.behavior = 'defensive';
+        s.sliders.eng = 1.8; s.sliders.shd = 1.2; s.sliders.wep = 0.5; s.sliders.sen = 0.5;
+        if (!s.moveTarget || s.moveTarget.distanceTo(s.fleePoint) > 100) {
+          s.moveTarget = s.fleePoint.clone();
+        }
+        continue;
+      }
+      // not running yet: loiters on station, guns cold, shields up
+      s.behavior = 'defensive';
+      s.sliders.eng = 0.6; s.sliders.shd = 1.6; s.sliders.wep = 0.8; s.sliders.sen = 1.0;
+      s.moveTarget = null;
       continue;
     }
 

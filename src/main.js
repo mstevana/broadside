@@ -148,7 +148,7 @@ class MissionRun {
     campaign.fleet.forEach((rec, i) => {
       const ship = new Ship(rec, { commanderMods: mods });
       const x = (i - (n - 1) / 2) * 160;
-      this.world.addShip(ship, new THREE.Vector3(x, 0, -1300), new THREE.Vector3(x, 0, 0));
+      this.world.addShip(ship, new THREE.Vector3(x, 0, -900), new THREE.Vector3(x, 0, 0));
     });
 
     // waves
@@ -203,7 +203,10 @@ class MissionRun {
         ship.objectiveDisable = true;
         this.prize = ship;
       }
-      if (spec.flee) ship.fleePoint = new THREE.Vector3(spec.flee[0], spec.flee[1], spec.flee[2]);
+      if (spec.flee) {
+        ship.fleePoint = new THREE.Vector3(spec.flee[0], spec.flee[1], spec.flee[2]);
+        ship.fleeAfter = spec.fleeAfter != null ? spec.fleeAfter : 45;
+      }
       if (spec.boss) this.boss = ship;
     }
     if (w.delay !== 0 || w.afterCleared) {
