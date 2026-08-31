@@ -94,9 +94,15 @@ shades the volume its arc covers and dims the rest, with the hard numbers in a
 readout above the bar; the ring answers "does this gun reach", the number
 answers "by how much".
 
-Every ship drags a slowly fading track behind it, roughly half a minute long, so
-a glance shows where a formation came from and which way a contact is drifting.
-Tracks fade in place when a contact is lost. (Reduced motion turns them off.)
+Engines burn as engines: each nozzle throws a tapered plume down the ship's
+stern, hot and wide at the throat and thinning to nothing, its length driven by
+actual thrust rather than speed — so a hull under full burn is obvious from
+across the map and a drifting one shows a stub. Behind each nozzle its own
+exhaust wake streams away, widening and dimming as it disperses, one ribbon per
+engine per ship. A glance shows where a formation came from, which way a contact
+is drifting, and how hard it was pushing when it passed. Wakes keep drifting and
+fading after the ship that made them is gone. (Reduced motion, and the lowest
+quality tier, turn them off.)
 
 The selection ring holds a constant on-screen thickness however far the camera
 pulls in or out, and depth-tests against the hull, so pulling the camera down to

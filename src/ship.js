@@ -101,6 +101,7 @@ export class Ship {
     this.mesh = built.group;
     this.spinParts = built.spin;
     this.engineGlows = built.engines;
+    this.engineColor = built.engineColor;
     this.veins = built.veins || null;      // Vessari bioluminescence
     this.mesh.userData.ship = this;
 
@@ -353,12 +354,19 @@ export class Ship {
       this._veinPhase = (this._veinPhase || this.id) + dt * (1.1 + (1 - health) * 3.2);
       this.veins.material.opacity = (0.45 + 0.4 * Math.sin(this._veinPhase)) * health;
     }
-    // engine glow reacts to actual thrust, not just speed
-    const thrust = this.vel.length() / Math.max(1, this.def.speed);
-    const burning = this.moveTarget ? 1 : 0.45;
+    // engine plumes react to actual thrust, not just speed. Width and length
+    // are separate: a plume that grew uniformly would just be a bigger blob.
+    const thrust = Math.min(1.4, this.vel.length() / Math.max(1, this.def.speed));
+    const burning = this.moveTarget ? 1 : 0.4;
+    this.thrust = thrust * burning;
+    // a slight flicker keeps the burn alive at a steady cruise
+    this._plumePhase = (this._plumePhase || this.id * 1.7) + dt * 17;
+    const flick = 1 + Math.sin(this._plumePhase) * 0.06 + Math.sin(this._plumePhase * 2.3) * 0.03;
     for (const e of this.engineGlows) {
-      const g = (0.6 + thrust * 1.1) * burning;
-      e.scale.set(g, g, g + thrust * 3.2 * burning);
+      const r = e.userData.radius || 1;
+      const w = r * (0.85 + thrust * 0.45) * (0.5 + burning * 0.5) * flick;
+      const len = r * (2.2 + thrust * 11) * burning * flick;
+      e.scale.set(w, w, len);
     }
   }
 

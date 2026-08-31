@@ -38,8 +38,91 @@ const M = {
   vBone:   hullMaterial(0xb9a8cc, TEX.BONE,   { roughness: 0.52, metalness: 0.08, flat: false, normal: 0.8 }),
   vTurret: hullMaterial(0x9a7fc0, TEX.BONE,   { roughness: 0.46, metalness: 0.18, flat: false, normal: 0.9 }),
   vGlow:   new THREE.MeshBasicMaterial({ color: 0x59ffc8 }),
-  vEngine: new THREE.MeshBasicMaterial({ color: 0xa9ff8a })
+  vEngine: new THREE.MeshBasicMaterial({ color: 0xa9ff8a }),
+  // plumes carry their own falloff in vertex colour, so every engine in the
+  // fleet shares one additive material
+  plume:   new THREE.MeshBasicMaterial({
+    color: 0x66d9ff, transparent: true, opacity: 0.9, depthWrite: false,
+    blending: THREE.AdditiveBlending, vertexColors: true, side: THREE.DoubleSide
+  }),
+  vPlume:  new THREE.MeshBasicMaterial({
+    color: 0xa9ff8a, transparent: true, opacity: 0.9, depthWrite: false,
+    blending: THREE.AdditiveBlending, vertexColors: true, side: THREE.DoubleSide
+  })
 };
+
+/** engine wash colour by faction, reused by the exhaust trails */
+export const ENGINE_COLOR = { human: 0x66d9ff, vessari: 0xa9ff8a };
+
+// ------------------------------------------------------------- exhaust ----
+//
+// A scaled sphere reads as a flat oval however you stretch it: it has no
+// nozzle, no throat and no tail. This is a proper plume — a tapered tube down
+// the ship's -Z, bulging just aft of the nozzle and thinning to nothing, with
+// brightness baked into vertex colour so the shape survives at any length.
+
+/** ring profile: [t along the plume, radius, brightness] */
+const PLUME_PROFILE = [
+  [0.00, 0.55, 1.00],
+  [0.08, 1.00, 0.98],
+  [0.22, 0.90, 0.70],
+  [0.42, 0.68, 0.40],
+  [0.66, 0.42, 0.17],
+  [0.85, 0.22, 0.05],
+  [1.00, 0.06, 0.00]
+];
+
+let _plumeGeo = null;
+/** unit plume: radius 1 at its widest, length 1 down -Z, nozzle at the origin */
+function plumeGeometry() {
+  if (_plumeGeo) return _plumeGeo;
+  const SEG = 12, R = PLUME_PROFILE.length;
+  const pos = new Float32Array(R * SEG * 3);
+  const col = new Float32Array(R * SEG * 3);
+  for (let r = 0; r < R; r++) {
+    const [t, rad, bright] = PLUME_PROFILE[r];
+    for (let j = 0; j < SEG; j++) {
+      const a = (j / SEG) * Math.PI * 2;
+      const i = (r * SEG + j) * 3;
+      pos[i] = Math.cos(a) * rad; pos[i + 1] = Math.sin(a) * rad; pos[i + 2] = -t;
+      col[i] = col[i + 1] = col[i + 2] = bright;
+    }
+  }
+  const idx = [];
+  for (let r = 0; r < R - 1; r++) {
+    for (let j = 0; j < SEG; j++) {
+      const a = r * SEG + j, b = r * SEG + (j + 1) % SEG;
+      const c = a + SEG, d = b + SEG;
+      idx.push(a, c, d, a, d, b);
+    }
+  }
+  _plumeGeo = new THREE.BufferGeometry();
+  _plumeGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  _plumeGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  _plumeGeo.setIndex(idx);
+  return _plumeGeo;
+}
+
+/**
+ * One engine: a static nozzle glow plus the plume that ship.js stretches with
+ * thrust. Only the plume is tagged `__engine`, so scaling its length never
+ * distorts the nozzle it comes out of.
+ *
+ * @returns {THREE.Mesh} the plume, already parented under `group`
+ */
+function addEngine(group, x, y, z, radius, vessari) {
+  const nozzle = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 0.62, 8, 6), vessari ? M.vEngine : M.engine);
+  nozzle.position.set(x, y, z);
+  nozzle.scale.z = 0.7;
+  group.add(nozzle);
+  const plume = new THREE.Mesh(plumeGeometry(), vessari ? M.vPlume : M.plume);
+  plume.position.set(x, y, z);
+  plume.name = '__engine';
+  plume.userData.radius = radius;
+  group.add(plume);
+  return plume;
+}
 
 // ------------------------------------------------------------ UV baking ----
 //
@@ -382,13 +465,9 @@ function buildFalchion(def) {
   ring.name = '__spin';
   group.add(ring);
   const engines = [];
-  for (const x of [-3.2, 3.2]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(1.2, 10, 8), M.engine);
-    e.position.set(x, 0, -18.9); e.name = '__engine';
-    group.add(e); engines.push(e);
-  }
+  for (const x of [-3.2, 3.2]) engines.push(addEngine(group, x, 0, -18.9, 1.2, false));
   addDecalPanels(group, def, { x: plateX, y: 0.2, z: -3.5, w: 6.4, h: 2.4 });
-  return { group, spin, engines };
+  return { group, spin, engines, engineColor: ENGINE_COLOR.human };
 }
 
 function buildDestroyer(def, variant) {
@@ -432,13 +511,9 @@ function buildDestroyer(def, variant) {
   const plateX = addNamePlate(h, { x: 3.7, y: 2.4, z: 13, w: 9, h: 2.6 });
   const group = h.assemble();
   const engines = [];
-  for (const x of [-4.2, 0, 4.2]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(1.5, 10, 8), M.engine);
-    e.position.set(x, -1, -25.8); e.name = '__engine';
-    group.add(e); engines.push(e);
-  }
+  for (const x of [-4.2, 0, 4.2]) engines.push(addEngine(group, x, -1, -25.8, 1.5, false));
   addDecalPanels(group, def, { x: plateX, y: 2.4, z: 13, w: 9, h: 2.6 });
-  return { group, spin: [], engines };
+  return { group, spin: [], engines, engineColor: ENGINE_COLOR.human };
 }
 
 function buildCruiser(def, variant) {
@@ -490,13 +565,9 @@ function buildCruiser(def, variant) {
   const plateX = addNamePlate(h, { x: W * 0.62 + 1.3, y: -0.4, z: L * 0.17, w: 15, h: 4.0 });
   const group = h.assemble();
   const engines = [];
-  for (const x of [-7, 0, 7]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(2.0, 10, 8), M.engine);
-    e.position.set(x, -1, -L / 2 - 4.4); e.name = '__engine';
-    group.add(e); engines.push(e);
-  }
+  for (const x of [-7, 0, 7]) engines.push(addEngine(group, x, -1, -L / 2 - 4.4, 2.0, false));
   addDecalPanels(group, def, { x: plateX, y: -0.4, z: L * 0.17, w: 15, h: 4.0 });
-  return { group, spin: [], engines };
+  return { group, spin: [], engines, engineColor: ENGINE_COLOR.human };
 }
 
 // =============================================================== VESSARI ====
@@ -591,11 +662,9 @@ function buildVessari(def, tier) {
   const eCount = tier >= 2 ? 3 : 1;
   for (let i = 0; i < eCount; i++) {
     const x = eCount === 1 ? 0 : (i - 1) * 3.4 * S;
-    const e = new THREE.Mesh(new THREE.SphereGeometry(1.25 * S, 10, 8), M.vEngine);
-    e.position.set(x, 0, -0.84 * L); e.name = '__engine';
-    group.add(e); engines.push(e);
+    engines.push(addEngine(group, x, 0, -0.84 * L, 1.25 * S, true));
   }
-  return { group, spin: [], engines, veins };
+  return { group, spin: [], engines, veins, engineColor: ENGINE_COLOR.vessari };
 }
 
 // ----------------------------------------------------------------- entry ----
@@ -634,7 +703,7 @@ export function buildShipMesh(def) {
   });
   // veins pulse per ship, so that one material must be its own
   if (veins) veins.material = veins.material.clone();
-  return { group, spin, engines, veins };
+  return { group, spin, engines, veins, engineColor: proto.engineColor || ENGINE_COLOR.human };
 }
 
 // ---------------------------------------------------------- support craft ----

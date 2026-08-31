@@ -11,7 +11,7 @@ const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _Y_AXIS = new THREE.Vector3(0, 1, 0);
-const _col = new THREE.Color();
+const _muzzleV = new THREE.Vector3();
 
 /** compact device names for the floating combat text */
 const DEVICE_SHORT = { engines: 'ENGINES', shieldGen: 'SHIELD GEN', sensors: 'SENSORS' };
@@ -22,10 +22,10 @@ const SEL_RING_PX = 2.5;
 /** how many hull-lighting muzzle lights exist at once (see _muzzleLights) */
 const MUZZLE_LIGHTS = 4;
 
-/** ship track: sample spacing, retained samples, and how long a sample lives */
-const TRAIL_STEP = 0.35;
-const TRAIL_MAX = 80;
-const TRAIL_LIFE = 26;
+/** exhaust wake: sample spacing, retained samples, and how long a sample lives */
+const TRAIL_STEP = 0.3;
+const TRAIL_MAX = 64;
+const TRAIL_LIFE = 19;
 
 /**
  * Flat annulus whose two radii are supplied by the shader rather than baked
@@ -62,6 +62,8 @@ export class World {
   static effectBudget = 160;
   /** whether muzzle flashes light the firing hull; off on the low quality tier */
   static muzzleLights = true;
+  /** whether ships lay exhaust wakes; off on the low quality tier */
+  static exhaustTrails = true;
 
   constructor(scene) {
     this.scene = scene;
@@ -91,8 +93,9 @@ export class World {
     this._ringGeo = new THREE.RingGeometry(1, 1.12, 40);
     this._ringGeo.rotateX(-Math.PI / 2);
     this._selRingGeo = makeBandGeometry(96);
-    // set by main once per frame so the ring band can be sized in pixels
-    this.viewMetrics = { pxPerUnitAt: () => 1 };
+    // replaced by main with the live camera; this stub keeps the world usable
+    // headlessly (tools/playtest) where there is no eye to face ribbons at
+    this.viewMetrics = { unitsPerPixel: () => 1, eye: () => null };
     this._tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
     this._tracerMats = new Map();
     this._selRings = new Map();   // shipId -> mesh
@@ -110,7 +113,7 @@ export class World {
     }
     this._muzzleNext = 0;
     this._muzzleAttached = true;
-    this._trails = new Map();      // shipId -> {line, pts:[{p,age}], acc}
+    this._trails = new Map();      // shipId -> {ribbons[], pts[][], color, acc}
     this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
     this._blips = new Map();       // shipId -> sprite (unconfirmed sensor contacts)
     this._targetRing = this._makeRing(0xff5252);   // recoloured by setCuePalette
@@ -923,8 +926,9 @@ export class World {
     if (ring) { this.markerGroup.remove(ring); this._selRings.delete(ship.id); }
     const blip = this._blips.get(ship.id);
     if (blip) { this.markerGroup.remove(blip); this._blips.delete(ship.id); }
-    const tr = this._trails.get(ship.id);
-    if (tr) { this.markerGroup.remove(tr.line); tr.line.geometry.dispose(); this._trails.delete(ship.id); }
+    // the wake is deliberately NOT dropped here: exhaust already in space keeps
+    // drifting and fading after the ship that made it is gone. _updateTrails
+    // ages out and disposes any trail whose ship it no longer sees.
     const wp = this._wpPaths && this._wpPaths.get(ship.id);
     if (wp) { this.markerGroup.remove(wp); this._wpPaths.delete(ship.id); }
     const mk = this._moveMarkers.get(ship.id);
@@ -966,85 +970,154 @@ export class World {
   }
 
   /**
-   * Every ship drags a slowly fading track behind it, so at a glance you can
-   * read where a formation came from and which way a contact is drifting.
+   * Exhaust trails: one ribbon per engine, per ship. What the engine actually
+   * threw out, drifting and dispersing behind the hull — so the wake widens and
+   * dims with age rather than staying a hairline. Each ribbon is a camera-facing
+   * strip rebuilt every frame, because a screen-space width is the only way to
+   * get a band of controllable thickness out of WebGL.
+   *
    * Colour rides on an additively-blended vertex colour: fading to black is
-   * what fades the line out, since line materials carry no per-vertex alpha.
+   * what fades the ribbon out, since a shared material carries no per-vertex
+   * alpha.
    */
   _updateTrails(dt) {
+    const eye = this.viewMetrics.eye ? this.viewMetrics.eye() : null;
     const seen = new Set();
     for (const s of this.ships) {
-      const show = s.alive && (s.isPlayer || s.detected);
+      const show = s.alive && (s.isPlayer || s.detected) && s.engineGlows.length;
       if (!show) continue;
       seen.add(s.id);
       let tr = this._trails.get(s.id);
-      if (!tr) {
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3));
-        geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3));
-        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
-          vertexColors: true, transparent: true, opacity: 0.85,
-          blending: THREE.AdditiveBlending, depthWrite: false
-        }));
-        line.frustumCulled = false;
-        line.renderOrder = 4;
-        this.markerGroup.add(line);
-        tr = { line, pts: [], acc: 0 };
+      if (!tr || tr.ribbons.length !== s.engineGlows.length) {
+        if (tr) this._disposeTrail(tr);
+        tr = {
+          color: new THREE.Color(s.engineColor || this.cue.own),
+          ribbons: s.engineGlows.map(() => this._makeRibbon()),
+          pts: s.engineGlows.map(() => []),
+          acc: 0
+        };
         this._trails.set(s.id, tr);
       }
       tr.acc += dt;
-      for (const q of tr.pts) q.age += dt;
-      // a sample every TRAIL_STEP seconds keeps the track evenly spaced in
-      // time, so a fast ship simply draws a longer one
-      if (tr.acc >= TRAIL_STEP) {
-        tr.acc = 0;
-        tr.pts.push({ p: s.pos.clone(), age: 0 });
-        if (tr.pts.length > TRAIL_MAX) tr.pts.shift();
+      const add = tr.acc >= TRAIL_STEP;
+      if (add) tr.acc = 0;
+      for (let i = 0; i < tr.ribbons.length; i++) {
+        const pts = tr.pts[i];
+        for (const q of pts) q.age += dt;
+        if (add) {
+          // the nozzle's world position, so each engine lays its own wake
+          s.engineGlows[i].getWorldPosition(_v1);
+          pts.push({ p: _v1.clone(), age: 0, thr: s.thrust || 0 });
+          if (pts.length > TRAIL_MAX) pts.shift();
+        }
+        while (pts.length && pts[0].age > TRAIL_LIFE) pts.shift();
+        // the head rides on the nozzle itself so the wake never lags the ship
+        this._fillRibbon(tr.ribbons[i], pts, tr.color, eye,
+          s.engineGlows[i].getWorldPosition(_v2), s.def.size, 1);
       }
-      while (tr.pts.length && tr.pts[0].age > TRAIL_LIFE) tr.pts.shift();
-
-      const n = tr.pts.length;
-      if (n < 2) { tr.line.visible = false; continue; }
-      tr.line.visible = true;
-      const pos = tr.line.geometry.attributes.position;
-      const col = tr.line.geometry.attributes.color;
-      const base = _col.setHex(s.isPlayer ? this.cue.own : this.cue.target);
-      for (let i = 0; i < n; i++) {
-        const q = tr.pts[i];
-        pos.setXYZ(i, q.p.x, q.p.y, q.p.z);
-        const f = Math.max(0, 1 - q.age / TRAIL_LIFE) * 0.55;
-        col.setXYZ(i, base.r * f, base.g * f, base.b * f);
-      }
-      // the head sits at the hull itself, so the track never lags the ship
-      pos.setXYZ(n - 1, s.pos.x, s.pos.y, s.pos.z);
-      pos.needsUpdate = true;
-      col.needsUpdate = true;
-      tr.line.geometry.setDrawRange(0, n);
     }
     for (const [id, tr] of this._trails) {
       if (seen.has(id)) continue;
-      // contact lost or ship destroyed: let the track fade out where it lies
-      for (const q of tr.pts) q.age += dt;
-      while (tr.pts.length && tr.pts[0].age > TRAIL_LIFE) tr.pts.shift();
-      if (!tr.pts.length) {
-        this.markerGroup.remove(tr.line);
-        tr.line.geometry.dispose();
-        this._trails.delete(id);
-        continue;
+      // contact lost or ship destroyed: the exhaust that is already out there
+      // keeps drifting and fading where it lies
+      let live = 0;
+      for (let i = 0; i < tr.ribbons.length; i++) {
+        const pts = tr.pts[i];
+        for (const q of pts) q.age += dt;
+        while (pts.length && pts[0].age > TRAIL_LIFE) pts.shift();
+        live += pts.length;
+        this._fillRibbon(tr.ribbons[i], pts, tr.color, eye, null, 20, 0.6);
       }
-      const col = tr.line.geometry.attributes.color;
-      const base = _col.setHex(this.cue.target);
-      for (let i = 0; i < tr.pts.length; i++) {
-        const f = Math.max(0, 1 - tr.pts[i].age / TRAIL_LIFE) * 0.35;
-        col.setXYZ(i, base.r * f, base.g * f, base.b * f);
-      }
-      col.needsUpdate = true;
-      tr.line.geometry.setDrawRange(0, tr.pts.length);
+      if (!live) { this._disposeTrail(tr); this._trails.delete(id); }
+    }
+  }
+
+  /**
+   * Three vertices per sample — dark edge, bright core, dark edge — so the
+   * ribbon reads as glowing gas with soft sides instead of a painted stripe.
+   */
+  _makeRibbon() {
+    const rows = TRAIL_MAX + 1, n = rows * 3;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const idx = [];
+    for (let i = 0; i < rows - 1; i++) {
+      const a = i * 3, b = a + 3;
+      idx.push(a, b, b + 1, a, b + 1, a + 1);           // left half
+      idx.push(a + 1, b + 1, b + 2, a + 1, b + 2, a + 2); // right half
+    }
+    geo.setIndex(idx);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 4;
+    this.markerGroup.add(mesh);
+    return mesh;
+  }
+
+  /**
+   * Lay one ribbon over a sample list. `head`, when given, is the live nozzle
+   * position appended past the last sample so the wake stays attached.
+   */
+  _fillRibbon(mesh, pts, color, eye, head, size, gain) {
+    const n = pts.length + (head ? 1 : 0);
+    if (n < 2) { mesh.visible = false; return; }
+    mesh.visible = true;
+    const pos = mesh.geometry.attributes.position;
+    const col = mesh.geometry.attributes.color;
+    const at = (i) => (head && i === n - 1 ? head : pts[i].p);
+    const ageAt = (i) => (head && i === n - 1 ? 0 : pts[i].age);
+    const thrAt = (i) => (head && i === n - 1 ? (pts.length ? pts[pts.length - 1].thr : 1) : pts[i].thr);
+    // the wake leaves the nozzle about as wide as the plume itself
+    const w0 = Math.max(0.8, size * 0.055);
+    for (let i = 0; i < n; i++) {
+      const p = at(i);
+      // tangent from the neighbours, so the strip follows the curve of the wake
+      _v3.copy(at(Math.min(n - 1, i + 1))).sub(at(Math.max(0, i - 1)));
+      if (_v3.lengthSq() < 1e-6) _v3.set(0, 0, 1);
+      if (eye) _muzzleV.copy(p).sub(eye); else _muzzleV.set(0, 1, 0);
+      _v3.cross(_muzzleV);
+      if (_v3.lengthSq() < 1e-6) _v3.set(1, 0, 0);
+      _v3.normalize();
+      const age = ageAt(i) / TRAIL_LIFE;
+      // exhaust spreads as it cools, and the burn that made it sets its bulk
+      const w = w0 * (0.6 + thrAt(i) * 0.7) * (1 + age * 3.4);
+      _v3.multiplyScalar(w);
+      const j = i * 3;
+      pos.setXYZ(j, p.x - _v3.x, p.y - _v3.y, p.z - _v3.z);
+      pos.setXYZ(j + 1, p.x, p.y, p.z);
+      pos.setXYZ(j + 2, p.x + _v3.x, p.y + _v3.y, p.z + _v3.z);
+      // dense and bright at the nozzle, gone by the far end
+      const f = Math.max(0, 1 - age) ** 2.2 * (0.05 + thrAt(i) * 0.20) * gain;
+      col.setXYZ(j, 0, 0, 0);
+      col.setXYZ(j + 1, color.r * f, color.g * f, color.b * f);
+      col.setXYZ(j + 2, 0, 0, 0);
+    }
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    mesh.geometry.setDrawRange(0, (n - 1) * 12);
+  }
+
+  /** drop every wake — reduced motion, or the quality governor stepping down */
+  _clearTrails() {
+    for (const tr of this._trails.values()) this._disposeTrail(tr);
+    this._trails.clear();
+  }
+
+  _disposeTrail(tr) {
+    for (const m of tr.ribbons) {
+      this.markerGroup.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
     }
   }
 
   updateMarkers(dt) {
-    if (this.trailsEnabled !== false) this._updateTrails(dt);
+    if (this.trailsEnabled !== false && World.exhaustTrails) this._updateTrails(dt);
+    else if (this._trails.size) this._clearTrails();
     const pulse = 1 + Math.sin(this.time * 5) * 0.08;
     for (const [id, ring] of this._selRings) {
       const s = this.ships.find(x => x.id === id);
@@ -1331,6 +1404,8 @@ export class World {
     // its own on top and the scene's light count climbs every launch
     for (const slot of this._muzzleLights) { slot.light.dispose(); this.scene.remove(slot.light); }
     this._muzzleLights.length = 0;
+    for (const tr of this._trails.values()) this._disposeTrail(tr);
+    this._trails.clear();
     this.scene.remove(this.markerGroup);
   }
 }

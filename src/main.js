@@ -48,7 +48,7 @@ const quality = new QualityGovernor({
   setBloom: (on) => bloom.setEnabled(on, window.innerWidth, window.innerHeight),
   setPixelRatio: (r) => renderer.setPixelRatio(r),
   setEffectBudget: (n) => { World.effectBudget = n; },
-  setMuzzleLights: (on) => { World.muzzleLights = on; }
+  setHeavyFx: (on) => { World.muzzleLights = on; World.exhaustTrails = on; }
 });
 quality.applyManual();
 applyDocumentSettings();
@@ -164,6 +164,7 @@ const input = new InputController(camera, renderer.domElement, {
  * that must keep a fixed on-screen size however far the camera pulls back.
  */
 const viewMetrics = {
+  eye: () => camera.position,
   unitsPerPixel(worldPos) {
     const dist = camera.position.distanceTo(worldPos);
     const h = renderer.domElement.clientHeight || window.innerHeight;

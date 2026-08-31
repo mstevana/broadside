@@ -96,7 +96,7 @@ export class QualityGovernor {
     this.hooks.setBloom(level < 1);
     this.hooks.setPixelRatio(level < 2 ? this.basePixelRatio : Math.min(1, this.basePixelRatio));
     this.hooks.setEffectBudget(level < 3 ? 160 : 60);
-    this.hooks.setMuzzleLights(level < 3);
+    this.hooks.setHeavyFx(level < 3);   // muzzle lights + exhaust wakes
   }
 
   /** call once per frame with the frame's duration in seconds */
