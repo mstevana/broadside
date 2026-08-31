@@ -271,7 +271,7 @@ export const SHIP_CLASSES = {
       { pos: [ 0, -5, 8],  dir: [0, -1, 0], hangar: true }
     ],
     devices: { engines: 220, shieldGen: 200, sensors: 130 },
-    traits: {}, cost: 480, unlockAfter: 3,
+    traits: {}, cost: 480, unlockAfter: 4,
     defaultLoadout: ['railgun', 'railgun', 'energy_shell', 'heavy_laser', 'autocannon', 'pd_laser', 'fighter_wing']
   },
 
@@ -382,6 +382,80 @@ export const SHIP_CLASSES = {
   }
 };
 
+// ---------------------------------------------------------------- CIVIL ----
+// Non-combatant and fixed hulls used by escort, defence and salvage missions.
+// They are never purchasable and never spawn as ordinary hostiles.
+
+SHIP_CLASSES.tr_meridian = {
+  id: 'tr_meridian', name: 'Meridian', className: 'Ore Freighter', faction: 'human',
+  role: 'Civilian transport',
+  desc: 'Unarmed bulk hauler. Slow, fragile, and entirely your problem.',
+  hull: 700, shield: 180, shieldRegen: 4,
+  speed: 34, accel: 5, turn: 0.18,
+  reactor: 10, reserve: 60, sensors: 900,
+  size: 46,
+  slots: [{ pos: [0, 4, 0], dir: [0, 1, 0] }],
+  devices: { engines: 130, shieldGen: 80, sensors: 50 },
+  traits: {}, cost: 0, unlockAfter: 99, civilian: true,
+  defaultLoadout: [null]
+};
+
+SHIP_CLASSES.st_anchorage = {
+  id: 'st_anchorage', name: 'Anchorage 7', className: 'Fleet Station', faction: 'human',
+  role: 'Fixed installation',
+  desc: 'Repair yard and magazine. It cannot move; if it burns, the sector goes with it.',
+  hull: 2600, shield: 900, shieldRegen: 14,
+  speed: 0, accel: 0, turn: 0.04,
+  reactor: 30, reserve: 200, sensors: 2600,
+  size: 70,
+  slots: [
+    { pos: [ 16, 6, 10], dir: [ 0.9, 0.2, 0.3] },
+    { pos: [-16, 6, 10], dir: [-0.9, 0.2, 0.3] },
+    { pos: [ 16, -6, -10], dir: [ 0.9, -0.2, -0.3] },
+    { pos: [-16, -6, -10], dir: [-0.9, -0.2, -0.3] }
+  ],
+  devices: { engines: 40, shieldGen: 260, sensors: 200 },
+  traits: {}, cost: 0, unlockAfter: 99, station: true,
+  defaultLoadout: ['pd_laser', 'pd_laser', 'autocannon', 'autocannon']
+};
+
+SHIP_CLASSES.vx_bastion = {
+  id: 'vx_bastion', name: 'Bastion', className: 'Shoal Spire', faction: 'vessari',
+  role: 'Fixed defence node',
+  desc: 'A grown gun-spire anchored to the reef. It cannot manoeuvre — and does not need to.',
+  hull: 1400, shield: 950, shieldRegen: 15,
+  speed: 0, accel: 0, turn: 0.05,
+  reactor: 30, reserve: 190, sensors: 2300,
+  size: 56,
+  slots: [
+    { pos: [ 12, 8, 6], dir: [ 0.7, 0.3, 0.6] },
+    { pos: [-12, 8, 6], dir: [-0.7, 0.3, 0.6] },
+    { pos: [ 0, 12, -6], dir: [0, 0.5, -0.8] },
+    { pos: [ 0, -8, 8], dir: [0, -0.4, 0.9] }
+  ],
+  devices: { engines: 30, shieldGen: 200, sensors: 150 },
+  salvage: 70,
+  traits: {}, cost: 0, unlockAfter: 99, enemy: true, station: true,
+  defaultLoadout: ['v_plasma_arc', 'v_spine_cannon', 'v_needle_beam', 'v_spore_swarm'],
+  aiRange: 900
+};
+
+SHIP_CLASSES.vx_derelict = {
+  id: 'vx_derelict', name: 'Tomb-Hulk', className: 'Derelict', faction: 'vessari',
+  role: 'Dead hull',
+  desc: 'A Shoal cruiser that died out here a long time ago. Something still keeps its lights on.',
+  hull: 900, shield: 0, shieldRegen: 0,
+  speed: 0, accel: 0, turn: 0.02,
+  reactor: 4, reserve: 40, sensors: 600,
+  size: 46,
+  slots: [{ pos: [0, 6, 0], dir: [0, 1, 0] }],
+  devices: { engines: 1, shieldGen: 1, sensors: 40 },
+  salvage: 120,
+  traits: {}, cost: 0, unlockAfter: 99, enemy: true, station: true, derelict: true,
+  defaultLoadout: [null],
+  aiRange: 600
+};
+
 export const SHOP_SHIPS = ['dd_sabre', 'dd_rapier', 'cr_bulwark', 'cr_warhammer'];
 export const MAX_FLEET = 4;
 
@@ -450,6 +524,67 @@ export const MISSIONS = [
     music: 'broadside', backdrop: 'anchorage',
     basePoints: 230, secondaryPoints: 70, xp: 180, secondaryXp: 70,
     secondary: 'noShipLost'
+  },
+  {
+    id: 'm4b', name: 'LONG HAUL', region: 'Tessaly Corridor — convoy lane',
+    briefing: 'The freighter Meridian is carrying the Anchorage\'s replacement shield coils and has no guns at all. '
+      + 'Shoal raiders are working the corridor.\n\nStay between the convoy and the raiders and walk it to the jump point. '
+      + 'The Meridian will not stop and cannot defend itself — if it burns, the Anchorage goes dark next week.',
+    secondaryText: 'Deliver the Meridian above 85% hull.',
+    waves: [
+      { delay: 0, ships: [
+        { cls: 'tr_meridian', at: [0, 0, -300], escort: true, goto: [0, 0, 5200], face: [0, 0, 1] },
+        { cls: 'vx_stinger', at: [1400, 60, 900] }, { cls: 'vx_stinger', at: [-1300, -60, 1100] }
+      ] },
+      { delay: 55, ships: [ { cls: 'vx_mantis', at: [1500, 0, 2200] }, { cls: 'vx_stinger', at: [-1500, 80, 2400] } ] },
+      { delay: 120, ships: [ { cls: 'vx_mantis', at: [900, -80, 3800] }, { cls: 'vx_lamprey', at: [-1100, 60, 3600] } ] }
+    ],
+    music: 'signal', backdrop: 'relay',
+    basePoints: 210, secondaryPoints: 70, xp: 165, secondaryXp: 70,
+    secondary: 'convoyUnhurt', special: 'escort'
+  },
+  {
+    id: 'm4c', name: 'DEAD RECKONING', region: 'Halloway Shoals — sensor shadow',
+    briefing: 'The Shoals scatter every active return we send into them; out here your arrays are worth a quarter of '
+      + 'their rating and contacts appear almost on top of you.\n\nThree Vessari tomb-hulks are drifting in the murk with '
+      + 'intact databanks. Put boarding parties on all three and hold the area. Keep a hull stationary alongside a wreck '
+      + 'to send the party across, then get out — we are not here to clear the Shoals, only to rob them.',
+    secondaryText: 'Board all three hulks without losing a ship.',
+    sensorMult: 0.4,
+    waves: [
+      { delay: 0, ships: [
+        { cls: 'vx_derelict', at: [-700, 40, 900] },
+        { cls: 'vx_derelict', at: [900, -60, 1500] },
+        { cls: 'vx_derelict', at: [200, 90, 2400] },
+        { cls: 'vx_stinger', at: [1600, 0, 1800] }
+      ] },
+      { delay: 60, ships: [ { cls: 'vx_mantis', at: [-1700, 60, 1600] }, { cls: 'vx_stinger', at: [-1400, -80, 2600] } ] },
+      { delay: 140, ships: [ { cls: 'vx_mantis', at: [1500, 90, 2900] } ] }
+    ],
+    music: 'verge', backdrop: 'drift',
+    basePoints: 220, secondaryPoints: 80, xp: 175, secondaryXp: 80,
+    secondary: 'allBoarded', special: 'board', boardSeconds: 18
+  },
+  {
+    id: 'm4d', name: 'HOLD THE WALL', region: 'Anchorage 7 — the yard itself',
+    briefing: 'They came back for the Anchorage, and this time they brought a spire.\n\nThe station cannot manoeuvre and '
+      + 'its flak grid only covers its own hull. Keep the Shoal off it for four minutes and the relief squadron arrives; '
+      + 'lose the yard and the campaign ends here. The Bastion spire anchored off the yard will not chase you — but nothing '
+      + 'gets past it either.',
+    secondaryText: 'Anchorage 7 finishes above 90% hull.',
+    holdSeconds: 240,
+    waves: [
+      { delay: 0, ships: [
+        { cls: 'st_anchorage', at: [0, 0, 500], protect: true, face: [0, 0, -900] },
+        { cls: 'vx_stinger', at: [1500, 60, 2200] }, { cls: 'vx_stinger', at: [-1500, -60, 2200] }
+      ] },
+      { delay: 50, ships: [ { cls: 'vx_bastion', at: [0, 0, 2900] }, { cls: 'vx_mantis', at: [800, 80, 2600] } ] },
+      { delay: 115, ships: [ { cls: 'vx_mantis', at: [-1200, 0, 2700] }, { cls: 'vx_lamprey', at: [1200, -60, 2800] } ] },
+      { delay: 175, ships: [ { cls: 'vx_basilisk', at: [0, 100, 3200] }, { cls: 'vx_stinger', at: [-600, 0, 3000] } ] }
+    ],
+    music: 'broadside', backdrop: 'anchorage',
+    basePoints: 260, secondaryPoints: 90, xp: 200, secondaryXp: 85,
+    secondary: 'stationUnhurt'
   },
   {
     id: 'm5', name: 'BROADSIDE', region: 'Cordell Deep — the Shoal',

@@ -97,8 +97,23 @@ Hierophant battleship.
 
 ## Campaign
 
-Five missions (intercept, sweep, a disable-don't-destroy chase that teaches
-subsystem targeting, a defensive wave battle, and the Hierophant). After each
+Eight missions, only half of them elimination:
+
+| # | Mission | Objective |
+|---|---|---|
+| 1 | First Blood | Intercept — the tutorial engagement |
+| 2 | The Silent Relay | Sweep a comms shadow |
+| 3 | Cut the Tendon | **Disable, don't destroy** — cripple a fleeing ship's drives |
+| 4 | Breakwater | Hold against three waves |
+| 5 | Long Haul | **Escort** an unarmed freighter to the jump point |
+| 6 | Dead Reckoning | **Board** three derelicts in a sensor blackout, then get out |
+| 7 | Hold the Wall | **Defend** a fixed station for four minutes |
+| 8 | Broadside | Kill the Hierophant |
+
+New objective types bring their own hulls: the unarmed Meridian freighter, the
+immobile Anchorage 7 station, the Vessari Bastion gun-spire and inert Tomb-Hulk
+derelicts. Allied hulls are human-faction (so the Shoal shoots them and they
+shoot back) but are not player-commanded — `controllable` separates the two. After each
 mission you get resource points for repairs, weapons and new hulls — **unspent
 points are lost at launch**. Secondary objectives pay extra points and XP. XP
 levels grant commander attribute points: **Combat** (+damage), **Engineering**

@@ -38,7 +38,18 @@ export function makeBot(BS) {
     update(m) {
       tick++;
       const focus = pickFocus(m);
-      const fleet = m.world.playerShips();
+      const fleet = m.world.commandShips();
+
+      // ---- boarding missions: park a hull alongside each unsecured hulk ----
+      const boarding = m.def.special === 'board'
+        ? m.derelicts.filter(d => !d.boardedDone) : [];
+      const boarders = new Map();
+      if (boarding.length && fleet.length) {
+        boarding.forEach((d, i) => {
+          const ship = fleet[i % fleet.length];
+          if (!boarders.has(ship)) boarders.set(ship, d);
+        });
+      }
 
       for (const s of fleet) {
         // ---- orders ----
@@ -76,6 +87,20 @@ export function makeBot(BS) {
         } else {
           for (const w of s.weapons) if (w.hp > 0 && !w.def.craft) w.enabled = true;
           s.sliders.wep = 1.0; s.sliders.shd = 1.0; s.sliders.eng = 1.4; s.sliders.sen = 1.4;
+        }
+
+        // ---- boarding station-keeping overrides pursuit ----
+        const hulk = boarders.get(s);
+        if (hulk) {
+          const d = s.pos.distanceTo(hulk.pos);
+          if (d > hulk.def.size * 2.0 + 90) {
+            s.moveTarget = hulk.pos.clone();
+            s._pursuitOrder = false;
+          } else {
+            s.moveTarget = null;          // hold still so the party can cross
+            s._pursuitOrder = false;
+          }
+          s.behavior = focus && s.pos.distanceTo(focus.pos) < 900 ? 'defensive' : 'focused';
         }
 
         // ---- wings: launch when something is in reach, recall when clear ----

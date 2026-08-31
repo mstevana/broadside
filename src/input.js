@@ -174,8 +174,8 @@ export class InputController {
     if (!world) return;
     const hit = this.pickShip(x, y, world);
     if (hit) {
-      if (hit.isPlayer) this.cb.onSelectShip(hit);
-      else this.cb.onTargetShip(hit);
+      if (hit.controllable) this.cb.onSelectShip(hit);
+      else if (!hit.isPlayer) this.cb.onTargetShip(hit);
       return;
     }
     // tap on open space => horizontal move at the selection's altitude

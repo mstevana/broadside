@@ -26,7 +26,7 @@ const _v2 = new THREE.Vector3();
 
 /** who the pack should be killing right now */
 function choosePackTarget(world) {
-  const players = world.playerShips();
+  const players = world.playerShips().filter(p => p.controllable || !p.def.civilian);
   if (!players.length) return null;
   let best = null, bestScore = -Infinity;
   for (const p of players) {
@@ -80,6 +80,30 @@ export function updateAI(world, dt) {
       const health = pack.reduce((a, s) => a + s.hull / s.hullMax, 0) / pack.length;
       const outnumbered = pack.length < world.playerShips().length;
       world._packBroken = health < 0.3 && outnumbered && pack.length <= 2;
+    }
+  }
+
+  // ---- allied convoys and installations run themselves ----
+  for (const s of world.ships) {
+    if (!s.ally || !s.alive || s.disabled) continue;
+    s._aiTick = (s._aiTick || 0) - dt;
+    if (s._aiTick > 0) continue;
+    s._aiTick = 0.8;
+    const foes = world.ships.filter(f => !f.isPlayer && f.alive && !f.disabled);
+    let near = null, nd = Infinity;
+    for (const f of foes) {
+      const d = s.pos.distanceTo(f.pos);
+      if (d < nd) { nd = d; near = f; }
+    }
+    // stations and freighters shoot what they can reach; freighters keep running
+    s.target = near && nd < s.sensorRange() ? near : null;
+    s.behavior = s.def.civilian ? 'defensive' : 'aggressive';
+    if (s.convoyGoal && !s.def.station) {
+      s.moveTarget = s.convoyGoal;
+      s.sliders.eng = 1.6; s.sliders.shd = 1.4; s.sliders.wep = 0.5; s.sliders.sen = 0.5;
+    } else if (s.def.station) {
+      s.moveTarget = null;
+      s.sliders.shd = 1.6; s.sliders.wep = 1.4; s.sliders.eng = 0.1; s.sliders.sen = 0.9;
     }
   }
 

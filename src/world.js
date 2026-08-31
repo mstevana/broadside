@@ -162,6 +162,8 @@ export class World {
   }
 
   playerShips() { return this.ships.filter(s => s.isPlayer && s.alive); }
+  /** hulls the player actually commands (excludes allied convoys/stations) */
+  commandShips() { return this.ships.filter(s => s.controllable && s.alive); }
   enemyShips() { return this.ships.filter(s => !s.isPlayer && s.alive && !s.disabled); }
 
   // ============================================================= firing ====
@@ -665,7 +667,7 @@ export class World {
     }
     // move order markers for player ships
     for (const s of this.ships) {
-      if (!s.isPlayer) continue;
+      if (!s.controllable) continue;
       const has = s.alive && s.moveTarget;
       let mk = this._moveMarkers.get(s.id);
       if (has && !mk) {

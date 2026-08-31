@@ -157,8 +157,16 @@ class MissionRun {
     this.bossGenFirst = false;
     this.prize = null;
     this.boss = null;
+    this.escorts = [];        // convoy hulls that must survive
+    this.protectees = [];     // installations that must survive
+    this.derelicts = [];      // boardable hulks
+    this.boarded = 0;
+    this.convoyArrived = false;
+    this.holdRemaining = null;
 
     const mods = commanderMods(campaign);
+    // a sensor blackout squeezes detection range fleet-wide for the mission
+    if (missionDef.sensorMult) mods.sensorMult *= missionDef.sensorMult;
     this.mods = mods;
 
     // player fleet, line abreast, bows toward +Z (skipped when resuming a save,
@@ -260,7 +268,7 @@ class MissionRun {
   initUI() {
     hud.show();
     hud.buildShipBar();
-    this.select(this.world.playerShips()[0]);
+    this.select(this.world.commandShips()[0]);
     hud.setPaused(false);
     hud.setSpeed('1×');
     this.updateObjectiveText();
@@ -272,10 +280,33 @@ class MissionRun {
     w.spawned = true;
     for (const spec of w.ships) {
       const rec = makeShipRecord(spec.cls);
+      const cls = SHIP_CLASSES[spec.cls];
       const ship = new Ship(rec, {});
       const pos = new THREE.Vector3(spec.at[0], spec.at[1], spec.at[2]);
-      this.world.addShip(ship, pos, new THREE.Vector3(0, 0, -1300));
+      const face = spec.face
+        ? new THREE.Vector3(spec.face[0], spec.face[1], spec.face[2])
+        : new THREE.Vector3(0, 0, cls.faction === 'human' ? pos.z + 1000 : -1300);
+      this.world.addShip(ship, pos, face);
       ship.behavior = 'aggressive';
+      ship.isStation = !!cls.station;
+      if (cls.faction === 'human') {
+        // an ally: never player-controlled, but fights on the player's side
+        ship.ally = true;
+        ship.controllable = false;
+        ship.detected = true;
+        ship.behavior = cls.civilian ? 'defensive' : 'aggressive';
+        if (spec.escort) this.escorts.push(ship);
+        if (spec.protect) this.protectees.push(ship);
+        if (spec.goto) ship.convoyGoal = new THREE.Vector3(spec.goto[0], spec.goto[1], spec.goto[2]);
+      }
+      if (cls.derelict) {
+        // A dead hull is scenery, not a combatant: `disabled` keeps every
+        // weapon-targeting path off it so the prize can't be shot to pieces.
+        ship.derelictHulk = true;
+        ship.disabled = true;
+        ship.detected = true;
+        this.derelicts.push(ship);
+      }
       if (spec.objective === 'disable') {
         ship.objectiveDisable = true;
         this.prize = ship;
@@ -296,9 +327,9 @@ class MissionRun {
 
   select(ship) {
     if (ship === null) {
-      this.selection = this.world.playerShips();
+      this.selection = this.world.commandShips();
       hud.toast('ALL SHIPS SELECTED');
-    } else if (ship.isPlayer && ship.alive) {
+    } else if (ship.controllable && ship.alive) {
       this.selection = [ship];
     }
     this.world.setSelection(this.selection);
@@ -353,7 +384,7 @@ class MissionRun {
   }
 
   moveCommand(point) {
-    const sel = this.selection.filter(s => s.alive);
+    const sel = this.selection.filter(s => s.alive && s.controllable);
     if (!sel.length) return;
     // preserve formation: offset each ship from the selection centroid
     const centroid = new THREE.Vector3();
@@ -396,7 +427,7 @@ class MissionRun {
       hud.toast(`${ship.name} DESTROYED`);
       this.selection = this.selection.filter(s => s !== ship);
       if (!this.selection.length) {
-        const rest = this.world.playerShips();
+        const rest = this.world.commandShips();
         if (rest.length) this.select(rest[0]);
       }
       this.world.setSelection(this.selection);
@@ -413,6 +444,22 @@ class MissionRun {
     const left = this.world.ships.filter(s => !s.isPlayer && s.alive && !s.disabled).length;
     if (this.skirmish) {
       hud.setObjective(`SKIRMISH — wave ${this.waveNum} · ${left} hostiles · ${this.kills} kills · score ${this.salvage}`);
+      return;
+    }
+    const sp = this.def.special;
+    if (sp === 'escort') {
+      const e = this.escorts.find(x => x.alive);
+      const d = e && e.convoyGoal ? Math.round(e.pos.distanceTo(e.convoyGoal)) : 0;
+      hud.setObjective(`${this.def.name} — escort the convoy home (${d}m to go · ${left} hostiles)`);
+      return;
+    }
+    if (this.def.holdSeconds != null) {
+      const t = Math.ceil(this.holdRemaining != null ? this.holdRemaining : this.def.holdSeconds);
+      hud.setObjective(`${this.def.name} — hold the line: ${t}s remaining (${left} hostiles)`);
+      return;
+    }
+    if (sp === 'board') {
+      hud.setObjective(`${this.def.name} — board the hulks: ${this.boarded}/${this.derelicts.length} secured (${left} hostiles)`);
       return;
     }
     const pending = this.waves.some(w => !w.spawned);
@@ -439,6 +486,12 @@ class MissionRun {
         return this.lostShips.length === 0;
       case 'bossGenFirst':
         return this.bossGenFirst;
+      case 'convoyUnhurt':
+        return this.escorts.every(e => e.alive && e.hull >= e.hullMax * 0.85);
+      case 'stationUnhurt':
+        return this.protectees.every(p => p.alive && p.hull >= p.hullMax * 0.9);
+      case 'allBoarded':
+        return this.derelicts.length > 0 && this.boarded >= this.derelicts.length;
       default: return false;
     }
   }
@@ -462,7 +515,7 @@ class MissionRun {
         if (this.waveNum === 0 || this._waveGap <= 0) {
           this.waveNum++;
           if (this.waveNum > 1) {
-            for (const p of this.world.playerShips()) {
+            for (const p of this.world.commandShips()) {
               p.hull = Math.min(p.hullMax, p.hull + p.hullMax * 0.12);
               for (const d of Object.values(p.devices)) d.hp = Math.max(d.hp, d.max * 0.5);
               for (const w of p.weapons) { if (w.ammo !== Infinity) w.ammo = w.def.ammo; }
@@ -509,17 +562,30 @@ class MissionRun {
       }
     }
 
+    // ---- objective bookkeeping for non-elimination missions ----
+    this.updateObjectives(dt);
+
     // ---- end conditions ----
     if (!this.over) {
-      const playersLeft = this.world.playerShips().length;
+      const playersLeft = this.world.commandShips().length;
       const allSpawned = this.waves.every(w => w.spawned);
-      const hostilesLeft = this.world.ships.some(s => !s.isPlayer && s.alive && !s.disabled);
+      const hostilesLeft = this.world.ships.some(
+        s => !s.isPlayer && s.alive && !s.disabled && !s.derelictHulk);
 
       if (playersLeft === 0) {
         this.finish(false, this.skirmish
           ? `Fleet destroyed on wave ${this.waveNum}.` : 'All ships lost.');
       } else if (this.skirmish) {
         // skirmish runs until the fleet dies
+      } else if (this.def.special === 'escort') {
+        if (this.convoyArrived) this.finish(true);
+      } else if (this.def.holdSeconds != null) {
+        if (this.elapsed >= this.def.holdSeconds) this.finish(true);
+      } else if (this.def.special === 'board') {
+        // securing the hulks IS the objective — this is an extraction, not an
+        // extermination, and in a sensor blackout you cannot reliably hunt
+        // down stragglers you are unable to see
+        if (this.derelicts.length && this.boarded >= this.derelicts.length) this.finish(true);
       } else if (this.def.special === 'disable_escape' && this.prize && this.prize.alive &&
                  !this.prize.disabled && this.prize.pos.length() > this.def.escapeRadius) {
         this.finish(false, 'The Lamprey escaped into the Drift with the datacore.');
@@ -529,6 +595,57 @@ class MissionRun {
     } else {
       this.overTimer -= dt;
       if (this.overTimer <= 0) this.conclude();
+    }
+  }
+
+  /** escort / defend / boarding / hold-the-line progress */
+  updateObjectives(dt) {
+    const sp = this.def.special;
+
+    // convoy: every escort must survive AND reach its destination
+    if (sp === 'escort') {
+      if (this.escorts.some(e => !e.alive)) {
+        this.finish(false, 'The convoy was destroyed.');
+        return;
+      }
+      const live = this.escorts.filter(e => e.alive);
+      if (live.length && live.every(e => e.convoyGoal && e.pos.distanceTo(e.convoyGoal) < 320)) {
+        this.convoyArrived = true;
+      }
+    }
+
+    // installation: it simply must not die
+    if (this.protectees.length && this.protectees.some(p => !p.alive)) {
+      this.finish(false, `${this.protectees.find(p => !p.alive).name} was destroyed.`);
+      return;
+    }
+
+    // hold the line: survive a fixed duration
+    if (this.def.holdSeconds != null) {
+      this.holdRemaining = Math.max(0, this.def.holdSeconds - this.elapsed);
+    }
+
+    // boarding: keep a commanded hull close to a derelict to put a party aboard
+    if (sp === 'board') {
+      for (const d of this.derelicts) {
+        if (d.boardedDone) continue;
+        const near = this.world.commandShips().some(
+          s => s.pos.distanceTo(d.pos) < d.def.size * 2.6 + 180 && s.vel.length() < 26);
+        d.boardProgress = (d.boardProgress || 0) + (near ? dt : -dt * 0.5);
+        d.boardProgress = Math.max(0, d.boardProgress);
+        if (near && !d._boardToast) {
+          d._boardToast = true;
+          hud.toast(`BOARDING PARTY AWAY — ${d.name}`);
+        }
+        if (!near) d._boardToast = false;
+        if (d.boardProgress >= (this.def.boardSeconds || 20)) {
+          d.boardedDone = true;
+          this.boarded++;
+          this.salvage += d.def.salvage || 0;
+          hud.toast(`${d.name} SECURED — +${d.def.salvage || 0} salvage`, 3200);
+          audio.play('disabled');
+        }
+      }
     }
   }
 
@@ -688,7 +805,7 @@ function startSkirmish() {
   mission.initUI();
   setBackdrop(['verge', 'drift', 'shoal', 'anchorage'][(Math.random() * 4) | 0]);
   // no briefing, no orders phase: skirmish starts weapons-free
-  for (const p of mission.world.playerShips()) p.behavior = 'aggressive';
+  for (const p of mission.world.commandShips()) p.behavior = 'aggressive';
   hud.refreshBehavior();
   music.setTrack('broadside');
   audio.startAmbience();
@@ -715,7 +832,7 @@ function endMission(res) {
   }
   // fold surviving ship state back into records / restore snapshot on failure
   if (res.won) {
-    const survivors = mission.world.ships.filter(s => s.isPlayer && s.alive);
+    const survivors = mission.world.ships.filter(s => s.controllable && s.alive);
     campaign.fleet = survivors.map(s => s.syncRecord());
     if (campaign.missionIndex < MISSIONS.length) campaign.missionIndex++;
     if (campaign.missionIndex >= MISSIONS.length) campaign.done = true;

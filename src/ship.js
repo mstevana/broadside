@@ -34,6 +34,11 @@ export class Ship {
     this.name = record.name;
     this.faction = def.faction;
     this.isPlayer = def.faction === 'human';
+    // Allies (convoys, stations) are human-faction — hostiles must shoot them
+    // and they must not shoot each other — but the player does not command
+    // them. `controllable` is what the HUD, selection and defeat check use.
+    this.controllable = this.isPlayer;
+    this.ally = false;
     this.commanderMods = opts.commanderMods || { dmgMult: 1, sensorMult: 1, deviceAcc: 0 };
 
     this.hull = Math.min(record.hull, def.hull);
@@ -379,6 +384,7 @@ export class Ship {
 
   update(dt, world) {
     if (!this.alive) return;
+    if (this.derelictHulk) return;      // a dead hull does nothing but drift
     this.updatePower(dt);
     if (!this.disabled) {
       this.updateWeapons(dt, world);

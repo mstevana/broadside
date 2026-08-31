@@ -98,7 +98,7 @@ export class HUD {
     this._shipCards.clear();
     const world = this.cb.getWorld();
     for (const s of world.ships) {
-      if (!s.isPlayer) continue;
+      if (!s.controllable) continue;
       const card = document.createElement('button');
       card.className = 'ship-card';
       card.innerHTML = `
