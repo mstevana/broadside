@@ -70,6 +70,16 @@ shield is down. Contacts you are not currently targeting still report
 `SUBSYSTEMS n/m OUT`, and the debrief tallies how many you knocked out over the
 whole engagement.
 
+Every mount throws a **muzzle flash** when it fires: a flare at the emitter, a
+stub of light down the bore, and a real point light that washes the firing
+ship's own plating in the weapon's colour. Beams are drawn thickest and
+brightest at the muzzle and taper toward the impact. Two ships trading laser
+fire otherwise produce identical bars of light with no way to tell which end is
+yours. Point defence and strike craft flash without the hull light — they fire
+constantly and would strobe the scene. The lights live in a fixed pool that is
+never resized, because changing the scene's light count recompiles every lit
+material mid-battle; the lowest quality tier detaches the pool outright.
+
 Floating combat text is lanes, not one stream: subsystem hits are violet and
 name the device (`ENGINES −12`), hull damage is amber, shield drain and
 `ABSORBED` are blue-grey and sit lowest. Each lane throttles separately and

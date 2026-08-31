@@ -47,7 +47,8 @@ bloom.setSize(window.innerWidth, window.innerHeight);
 const quality = new QualityGovernor({
   setBloom: (on) => bloom.setEnabled(on, window.innerWidth, window.innerHeight),
   setPixelRatio: (r) => renderer.setPixelRatio(r),
-  setEffectBudget: (n) => { World.effectBudget = n; }
+  setEffectBudget: (n) => { World.effectBudget = n; },
+  setMuzzleLights: (on) => { World.muzzleLights = on; }
 });
 quality.applyManual();
 applyDocumentSettings();

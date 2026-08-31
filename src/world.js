@@ -19,6 +19,9 @@ const DEVICE_SHORT = { engines: 'ENGINES', shieldGen: 'SHIELD GEN', sensors: 'SE
 /** on-screen width of a selection ring's band, in CSS pixels */
 const SEL_RING_PX = 2.5;
 
+/** how many hull-lighting muzzle lights exist at once (see _muzzleLights) */
+const MUZZLE_LIGHTS = 4;
+
 /** ship track: sample spacing, retained samples, and how long a sample lives */
 const TRAIL_STEP = 0.35;
 const TRAIL_MAX = 80;
@@ -57,6 +60,8 @@ function makeBandGeometry(segments) {
 export class World {
   /** soft cap on simultaneous visual effects; lowered by the quality governor */
   static effectBudget = 160;
+  /** whether muzzle flashes light the firing hull; off on the low quality tier */
+  static muzzleLights = true;
 
   constructor(scene) {
     this.scene = scene;
@@ -92,6 +97,19 @@ export class World {
     this._tracerMats = new Map();
     this._selRings = new Map();   // shipId -> mesh
 
+    // A fixed pool of point lights, added once and only ever re-aimed: changing
+    // the light COUNT would force three to recompile every hull shader mid-
+    // battle, so intensity 0 is how a light is "off".
+    this._muzzleLights = [];
+    for (let i = 0; i < MUZZLE_LIGHTS; i++) {
+      // intensity 0, never hidden: three drops invisible lights from the light
+      // list, which changes the count and recompiles every lit material
+      const l = new THREE.PointLight(0xffffff, 0, 900, 2);
+      scene.add(l);
+      this._muzzleLights.push({ light: l, ttl: 0, ttlMax: 1, peak: 0 });
+    }
+    this._muzzleNext = 0;
+    this._muzzleAttached = true;
     this._trails = new Map();      // shipId -> {line, pts:[{p,age}], acc}
     this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
     this._blips = new Map();       // shipId -> sprite (unconfirmed sensor contacts)
@@ -276,6 +294,9 @@ export class World {
     const from = shooter.weaponWorldPos(w, new THREE.Vector3());
     const wdef = w.def;
     audio.weaponSound(wdef, from);
+    // heavier mounts throw a bigger flash; energy draw is the handiest proxy
+    const flash = 0.7 + Math.min(1.1, (wdef.energy || 6) / 18);
+    this.spawnMuzzleFlash(from, target.pos, wdef, flash);
     if (wdef.missile) {
       const n = wdef.salvo || 1;
       for (let i = 0; i < n; i++) this.spawnMissile(shooter, wdef, from, target, i);
@@ -325,13 +346,28 @@ export class World {
     });
   }
 
+  /**
+   * A beam is drawn thickest and brightest at the muzzle and tapers toward the
+   * point of impact. Two ships trading laser fire otherwise produce identical
+   * bars of light and you cannot tell which end is yours.
+   */
   spawnBeam(from, to, color, width = 2, ttl = 0.13) {
     const len = from.distanceTo(to);
     if (len < 1) return;
-    const geo = new THREE.CylinderGeometry(width, width, 1, 5, 1, true);
+    // after lookAt + rotateX the cylinder's +Y end points at the target, so the
+    // "top" radius is the impact end and the "bottom" is the muzzle
+    const geo = new THREE.CylinderGeometry(width * 0.35, width, 1, 6, 1, true);
     const mat = new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
+      color, transparent: true, opacity: 0.95, depthWrite: false,
+      blending: THREE.AdditiveBlending, vertexColors: true
     });
+    const pos = geo.attributes.position;
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const k = pos.getY(i) < 0 ? 1 : 0.3;     // hot at the source, cool at the hit
+      col[i * 3] = k; col[i * 3 + 1] = k; col[i * 3 + 2] = k;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(from).add(to).multiplyScalar(0.5);
     mesh.scale.y = len;
@@ -339,6 +375,58 @@ export class World {
     mesh.rotateX(Math.PI / 2);
     this.scene.add(mesh);
     this.beams.push({ mesh, ttl, ttlMax: ttl });
+  }
+
+  /**
+   * The flash at the mount itself: a real point light that washes over the
+   * firing ship's own plating, plus an additive flare and a stub of light
+   * thrown along the bore. This is what tells you, at a glance, which ship in
+   * an exchange is the one shooting.
+   *
+   * @param {THREE.Vector3} from   muzzle position in world space
+   * @param {THREE.Vector3} toward a point the shot is heading for
+   * @param {object} wdef          weapon definition (colour and class)
+   * @param {number} scale         1 for a normal mount, larger for heavy guns
+   */
+  spawnMuzzleFlash(from, toward, wdef, scale = 1) {
+    if (this.effects.length > (World.effectBudget || 160) * 0.9) return;
+    const color = wdef.color;
+
+    // core flare — kept smaller than the mount it sits on, so a full broadside
+    // reads as a row of flashes rather than one white blowout
+    const size = 9 * scale;
+    const core = this._makeSprite(color, size);
+    core.position.copy(from);
+    this.scene.add(core);
+    this.effects.push({ mesh: core, ttl: 0.15, ttlMax: 0.15, kind: 'muzzle', size });
+
+    // a stub of light along the bore, so the flash reads as directional rather
+    // than as a hit sparkle
+    _v1.copy(toward).sub(from);
+    if (_v1.lengthSq() > 1) {
+      _v1.normalize();
+      const flare = this._makeTracer(color, 1.7 * scale, 17 * scale);
+      // _makeTracer hands back a cached, shared material; this one fades on its
+      // own schedule and gets disposed, so it needs a private copy
+      flare.material = flare.material.clone();
+      flare.position.copy(from).addScaledVector(_v1, 8.5 * scale);
+      this._orientTracer(flare, _v1);
+      this.scene.add(flare);
+      this.effects.push({ mesh: flare, ttl: 0.12, ttlMax: 0.12, kind: 'muzzle', size: 1 });
+    }
+
+    // only mounts that matter light the hull — point defence and strike craft
+    // fire constantly and would strobe the scene
+    if (!World.muzzleLights || scale < 0.5) return;
+    // round-robin the pool: a light already in use is simply re-aimed, which
+    // is preferable to a flash going missing during a heavy broadside
+    const slot = this._muzzleLights[this._muzzleNext];
+    this._muzzleNext = (this._muzzleNext + 1) % this._muzzleLights.length;
+    slot.light.position.copy(from);
+    slot.light.color.setHex(color);
+    slot.light.distance = 210 * scale;
+    slot.peak = 110 * scale * scale;
+    slot.ttl = slot.ttlMax = 0.18;
   }
 
   // ====================================================== point defence ====
@@ -366,6 +454,8 @@ export class World {
   firePD(ship, w, threat) {
     const from = ship.weaponWorldPos(w, _v3);
     audio.play('pd', from);
+    // a small flash: point defence chatters constantly and should not strobe
+    this.spawnMuzzleFlash(from, threat.pos, w.def, 0.4);
     this.spawnBeam(from.clone(), threat.pos, w.def.color, 0.8, 0.08);
     if (Math.random() >= (w.def.pdKill || 0.5)) return;
     if (threat.craft) {
@@ -382,6 +472,7 @@ export class World {
   /** a single craft's attack run: bypasses the deflector entirely */
   craftAttack(sq, c, attack) {
     const cdef = sq.def.craft;
+    this.spawnMuzzleFlash(c.pos, attack.pos, { color: sq.def.color }, 0.25);
     this.spawnBeam(c.pos.clone(), attack.pos, sq.def.color, 0.6, 0.1);
     if (attack.kind === 'missile') {
       attack.obj.hp = 0;
@@ -1134,6 +1225,26 @@ export class World {
       }
     }
 
+    // muzzle lights: intensity decays to zero and the light stays in the scene
+    for (const slot of this._muzzleLights) {
+      if (slot.ttl <= 0) continue;
+      slot.ttl -= dt;
+      const k = Math.max(0, slot.ttl / slot.ttlMax);
+      slot.light.intensity = slot.peak * k * k;
+      if (slot.ttl <= 0) slot.light.intensity = 0;
+    }
+    // dropping to the lowest quality tier detaches the pool outright — an
+    // intensity-0 light still costs every lit fragment
+    if (this._muzzleAttached !== !!World.muzzleLights) {
+      this._muzzleAttached = !!World.muzzleLights;
+      for (const slot of this._muzzleLights) {
+        slot.ttl = 0;
+        slot.light.intensity = 0;
+        if (this._muzzleAttached) this.scene.add(slot.light);
+        else this.scene.remove(slot.light);
+      }
+    }
+
     // effects
     for (let i = this.effects.length - 1; i >= 0; i--) {
       const e = this.effects[i];
@@ -1165,6 +1276,13 @@ export class World {
       } else if (e.kind === 'text') {
         e.mesh.position.y += e.vy * dt;
         e.mesh.material.opacity = Math.min(1, k * 2.2);
+      } else if (e.kind === 'muzzle') {
+        // a hard bloom that collapses fast, rather than a puff that lingers
+        e.mesh.material.opacity = k * k;
+        if (e.size > 1) {
+          const sc = e.size * (0.55 + k * 0.75);
+          e.mesh.scale.set(sc, sc, 1);
+        }
       }
       if (e.ttl <= 0) {
         this.scene.remove(e.mesh);
@@ -1209,6 +1327,10 @@ export class World {
     for (const m of this.missiles) { this.scene.remove(m.sprite); this.scene.remove(m.tail); }
     for (const b of this.beams) this.scene.remove(b.mesh);
     for (const e of this.effects) this.scene.remove(e.mesh);
+    // the muzzle-light pool must go with the world, or the next mission adds
+    // its own on top and the scene's light count climbs every launch
+    for (const slot of this._muzzleLights) { slot.light.dispose(); this.scene.remove(slot.light); }
+    this._muzzleLights.length = 0;
     this.scene.remove(this.markerGroup);
   }
 }
