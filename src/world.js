@@ -13,6 +13,9 @@ const _v3 = new THREE.Vector3();
 const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 export class World {
+  /** soft cap on simultaneous visual effects; lowered by the quality governor */
+  static effectBudget = 160;
+
   constructor(scene) {
     this.scene = scene;
     this.ships = [];
@@ -22,6 +25,9 @@ export class World {
     this.beams = [];
     this.effects = [];
     this.time = 0;
+    this.enemyDmgMult = 1;      // difficulty
+    this.enemyRegenMult = 1;
+    this.cue = { own: 0x35c8ff, target: 0xff5252, ally: 0x4dd47a, waypoint: 0x4dd47a };
 
     this.onMessage = null;        // (text) => void  — HUD toast
     this.onShipKilled = null;     // (ship, killer) => void
@@ -43,13 +49,33 @@ export class World {
 
     this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
     this._blips = new Map();       // shipId -> sprite (unconfirmed sensor contacts)
-    this._targetRing = this._makeRing(0xff5252);
+    this._targetRing = this._makeRing(0xff5252);   // recoloured by setCuePalette
     this._targetRing.visible = false;
     this.markerGroup.add(this._targetRing);
 
     // ghost marker for the move gesture
     this.ghost = this._makeMoveMarker(0x35c8ff, 0.9);
     this._setMarkerVisible(this.ghost, false);
+  }
+
+  /** apply a colourblind-safe (or default) cue palette to the 3D markers */
+  setCuePalette(palette) {
+    this.cue = palette;
+    if (this._targetRing) this._targetRing.material.color.setHex(palette.target);
+    for (const ring of this._selRings.values()) ring.material.color.setHex(palette.own);
+    for (const mk of this._moveMarkers.values()) {
+      for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) {
+        part.material.color.setHex(palette.waypoint);
+      }
+    }
+    for (const b of this._blips.values()) b.material.color.setHex(palette.target);
+    if (this._wpPaths) for (const l of this._wpPaths.values()) l.material.color.setHex(palette.waypoint);
+    if (this.ghost) {
+      for (const part of [this.ghost.ring, this.ghost.line, this.ghost.vline,
+                          this.ghost.planeRing, this.ghost.diamond]) {
+        part.material.color.setHex(palette.own);
+      }
+    }
   }
 
   // =========================================================== marker kit ====
@@ -362,7 +388,8 @@ export class World {
   resolveHit(shooter, wdef, target, opts = {}) {
     if (!target.alive) return;
     const mods = shooter.commanderMods;
-    const dmgMult = mods.dmgMult || 1;
+    // difficulty scales what the Shoal dishes out, never what the player does
+    const dmgMult = (mods.dmgMult || 1) * (shooter.isPlayer ? 1 : this.enemyDmgMult);
     const traits = shooter.def.traits || {};
     target.lastAttacker = shooter;
 
@@ -505,6 +532,8 @@ export class World {
 
   /** tumbling wreckage thrown clear when a hull breaks up */
   spawnDebris(ship) {
+    const budget = World.effectBudget || 160;
+    if (this.effects.length > budget) return;
     const n = Math.min(14, 5 + Math.round(ship.def.size / 6));
     const mat = new THREE.MeshStandardMaterial({
       color: ship.isPlayer ? 0x8b98a6 : 0x6a5588,
@@ -531,6 +560,7 @@ export class World {
 
   /** venting plasma from a wrecked subsystem — a running damage read-out */
   spawnSmoke(ship, offset) {
+    if (this.effects.length > (World.effectBudget || 160)) return;
     const spr = this._makeSprite(0xff8a4a, ship.def.size * 0.5);
     spr.material.opacity = 0.35;
     const off = offset ? offset.clone() : new THREE.Vector3();
@@ -545,6 +575,7 @@ export class World {
 
   /** floating combat number above a ship (rate-limited per target) */
   spawnDamageText(target, text, color) {
+    if (this.effects.length > (World.effectBudget || 160) * 0.7) return;
     if (target._lastDmgText != null && this.time - target._lastDmgText < 0.15) return;
     target._lastDmgText = this.time;
     const c = document.createElement('canvas');
@@ -633,7 +664,7 @@ export class World {
     }
     for (const s of ships) {
       if (!this._selRings.has(s.id)) {
-        const ring = this._makeRing(0x35c8ff);
+        const ring = this._makeRing(this.cue.own);
         this._selRings.set(s.id, ring);
         this.markerGroup.add(ring);
       }
@@ -667,7 +698,7 @@ export class World {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * 16), 3));
       line = new THREE.Line(geo, new THREE.LineDashedMaterial({
-        color: 0x4dd47a, transparent: true, opacity: 0.5,
+        color: this.cue.waypoint, transparent: true, opacity: 0.5,
         dashSize: 26, gapSize: 18, depthWrite: false
       }));
       line.frustumCulled = false;
@@ -703,7 +734,7 @@ export class World {
       const has = s.alive && s.moveTarget;
       let mk = this._moveMarkers.get(s.id);
       if (has && !mk) {
-        mk = this._makeMoveMarker(0x4dd47a, 0.8);
+        mk = this._makeMoveMarker(this.cue.waypoint, 0.8);
         this._moveMarkers.set(s.id, mk);
       }
       if (mk) {
@@ -739,7 +770,7 @@ export class World {
       const wantBlip = !s.isPlayer && s.alive && s.blip;
       let b = this._blips.get(s.id);
       if (wantBlip && !b) {
-        b = this._makeSprite(0xff5252, 30);
+        b = this._makeSprite(this.cue.target, 30);
         b.material.opacity = 0.5;
         this.markerGroup.add(b);
         this._blips.set(s.id, b);

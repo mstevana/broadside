@@ -218,6 +218,36 @@ gets a partial hull patch, device restoration and a magazine restock. Scores
 waves survived, hulls destroyed or captured, and salvage, with a persistent
 personal best.
 
+## Settings and accessibility
+
+On the main menu, all persisted to `localStorage`:
+
+- **Difficulty** — Recruit / Officer / Veteran, scaling what the Shoal deals
+  and how fast its shields recover (never what the player deals), with a
+  matching adjustment to mission awards. Verified to move the needle: Veteran
+  roughly doubles fleet attrition in the hardest mission while staying
+  completable.
+- **Target & selection cues** — the default palette leans on cyan-vs-red, the
+  pairing protan/deutan viewers lose first. Two alternates move the hostile cue
+  to amber or magenta; selection rings, target brackets, sensor blips, move
+  markers and waypoint paths all recolour live.
+- **Text size** — scales HUD type *and* its touch targets together, so larger
+  text doesn't just crowd the controls.
+- **Motion** — drops UI transitions (also honours `prefers-reduced-motion`).
+- **Graphics** — Auto / High / Low.
+
+**Adaptive quality.** In Auto, a governor watches median frame time and sheds
+work in stages — bloom first, then pixel ratio, then effect density — recovering
+slowly when frames are comfortable again, so an older device degrades smoothly
+instead of stuttering.
+
+**Touch targets.** A viewport audit across iPhone SE / 13 / 15 Pro Max / iPad
+mini found the top-bar and order buttons were 27–29 px tall, well under the
+44 pt minimum. Each small control now carries an invisible 46 px hit area
+centred on it, so the HUD stays compact (the bottom bar already takes a third
+of an iPhone SE in landscape) while taps land. Short landscape phones also get
+a trimmed weapon bar.
+
 ## Install / offline
 
 The game ships a web app manifest and a service worker that precaches every
@@ -280,6 +310,7 @@ The campaign is validated by an automated harness rather than by hand:
 node tools/playtest.js 4              # 4 full campaigns, all five missions
 node tools/playtest.js 3 --mission 5  # just the finale
 node tools/playtest.js 2 --verbose    # per-mission fleet state
+node tools/playtest.js 2 --difficulty veteran
 ```
 
 `tools/bot.js` is a bot commander that plays the way a competent human would —
@@ -314,6 +345,7 @@ src/backdrop.js procedural nebula/planet cube-texture backdrops
 src/bloom.js    self-contained bloom composer
 src/persist.js  mid-mission save/resume serialization
 src/formation.js fleet formation slot layouts
+src/settings.js  persisted settings + adaptive quality governor
 tools/bot.js    bot commander used for automated balance playtesting
 tools/playtest.js  headless campaign playtest harness
 sw.js           service worker (offline precache)

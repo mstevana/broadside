@@ -17,6 +17,8 @@ const RUNS = parseInt(process.argv[2], 10) || 3;
 const ONLY = process.argv.includes('--mission')
   ? parseInt(process.argv[process.argv.indexOf('--mission') + 1], 10) : null;
 const VERBOSE = process.argv.includes('--verbose');
+const DIFF = process.argv.includes('--difficulty')
+  ? process.argv[process.argv.indexOf('--difficulty') + 1] : null;
 const BOT_SRC = readFileSync(new URL('./bot.js', import.meta.url), 'utf8');
 
 const MAX_SIM_SECONDS = 900;      // a mission that runs this long is a stalemate
@@ -145,6 +147,7 @@ for (let run = 0; run < RUNS; run++) {
     window.__hullMax = Object.fromEntries(
       Object.entries(d.SHIP_CLASSES).map(([k, v]) => [k, v.hull]));
   });
+  if (DIFF) await page.evaluate((d) => window.BS.setSetting('difficulty', d), DIFF);
   await page.click('#btn-newgame');
 
   const total = await page.evaluate(async () => (await import('./src/data.js')).MISSIONS.length);
@@ -177,7 +180,7 @@ for (let run = 0; run < RUNS; run++) {
   }
 }
 
-console.log('\n=== CAMPAIGN PLAYTEST ===  runs=' + RUNS);
+console.log('\n=== CAMPAIGN PLAYTEST ===  runs=' + RUNS + (DIFF ? '  difficulty=' + DIFF : ''));
 for (const [k, v] of stats) {
   const n = v.won + v.lost + v.stalled;
   const avg = v.secs.length ? Math.round(v.secs.reduce((a, b) => a + b, 0) / v.secs.length) : '-';

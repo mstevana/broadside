@@ -17,6 +17,8 @@ import { audio } from './audio.js';
 import { music } from './music.js';
 import { Tutorial } from './tutorial.js';
 import { formationPoints, FORMATIONS, FORMATION_ORDER } from './formation.js';
+import { settings, setSetting, applyDocumentSettings, cues, difficulty,
+         DIFFICULTY, QualityGovernor } from './settings.js';
 import { saveMission, loadMissionSave, clearMissionSave, hasMissionSave, restoreShip } from './persist.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +41,16 @@ scene.add(makeStarfield());
 // emissive things — drive flares, beams, windows, veins — actually glow
 const bloom = new BloomComposer(renderer, { strength: 0.7, threshold: 0.88 });
 bloom.setSize(window.innerWidth, window.innerHeight);
+
+// Adaptive quality: sheds bloom, then resolution, then effect density when
+// frames get long, so an older device degrades instead of stuttering.
+const quality = new QualityGovernor({
+  setBloom: (on) => bloom.setEnabled(on, window.innerWidth, window.innerHeight),
+  setPixelRatio: (r) => renderer.setPixelRatio(r),
+  setEffectBudget: (n) => { World.effectBudget = n; }
+});
+quality.applyManual();
+applyDocumentSettings();
 
 /** swap the deep-space backdrop (per mission region) */
 function setBackdrop(name) {
@@ -171,6 +183,9 @@ class MissionRun {
     // a sensor blackout squeezes detection range fleet-wide for the mission
     if (missionDef.sensorMult) mods.sensorMult *= missionDef.sensorMult;
     this.mods = mods;
+    this.diff = difficulty();
+    this.world.enemyDmgMult = this.diff.enemyDmg;
+    this.world.enemyRegenMult = this.diff.enemyRegen;
 
     // player fleet, line abreast, bows toward +Z (skipped when resuming a save,
     // which restores every hull from its serialized state instead)
@@ -269,6 +284,7 @@ class MissionRun {
 
   /** call after the global `mission` reference is assigned (HUD reads it) */
   initUI() {
+    this.world.setCuePalette(cues());
     hud.show();
     hud.buildShipBar();
     this.select(this.world.commandShips()[0]);
@@ -696,6 +712,7 @@ class MissionRun {
       lostShips: this.lostShips,
       stats: this.stats,
       salvage: this.salvage,
+      pointsMult: this.diff.points,
       skirmish: this.skirmish,
       waveNum: this.waveNum,
       kills: this.kills,
@@ -892,6 +909,49 @@ $('btn-continue').addEventListener('click', () => {
   campaign = loadCampaign() || newCampaign();
   gotoRefit();
 });
+// ---------------------------------------------------------- settings UI ----
+
+function buildOptions(hostId, opts, get, set) {
+  const host = $(hostId);
+  host.innerHTML = '';
+  for (const o of opts) {
+    const b = document.createElement('button');
+    b.className = 'opt-btn' + (get() === o.value ? ' on' : '');
+    b.textContent = o.label;
+    b.addEventListener('click', () => { set(o.value); buildAllOptions(); });
+    host.appendChild(b);
+  }
+}
+
+function buildAllOptions() {
+  buildOptions('opt-difficulty',
+    Object.entries(DIFFICULTY).map(([k, v]) => ({ value: k, label: v.name })),
+    () => settings.difficulty, (v) => setSetting('difficulty', v));
+  $('difficulty-desc').textContent = DIFFICULTY[settings.difficulty].desc;
+
+  buildOptions('opt-color', [
+    { value: 'default', label: 'DEFAULT' },
+    { value: 'deuter', label: 'RED-GREEN SAFE' },
+    { value: 'trit', label: 'BLUE-YELLOW SAFE' }
+  ], () => settings.colorMode, (v) => {
+    setSetting('colorMode', v);
+    if (mission) mission.world.setCuePalette(cues());
+  });
+
+  buildOptions('opt-text', [
+    { value: false, label: 'NORMAL' }, { value: true, label: 'LARGER' }
+  ], () => settings.largeText, (v) => setSetting('largeText', v));
+
+  buildOptions('opt-motion', [
+    { value: false, label: 'FULL' }, { value: true, label: 'REDUCED' }
+  ], () => settings.reducedMotion, (v) => setSetting('reducedMotion', v));
+
+  buildOptions('opt-quality', [
+    { value: 'auto', label: 'AUTO' }, { value: 'high', label: 'HIGH' }, { value: 'low', label: 'LOW' }
+  ], () => settings.quality, (v) => { setSetting('quality', v); quality.applyManual(); });
+}
+buildAllOptions();
+
 $('btn-resume').addEventListener('click', resumeMission);
 $('btn-skirmish').addEventListener('click', startSkirmish);
 $('btn-howto').addEventListener('click', () => $('howto').classList.toggle('hidden'));
@@ -959,6 +1019,7 @@ function frame() {
   if (mission) {
     mission.update(dt);
     input.updateCamera(dt);
+    quality.sample(dt);
     hudAccum += dt;
     if (hudAccum > 0.1) {
       hudAccum = 0;
@@ -994,5 +1055,6 @@ window.BS = {
   get mission() { return mission; },
   get campaign() { return campaign; },
   audio, music, bloom, setBackdrop, renderer,
-  autosave, resumeMission, hasMissionSave, clearMissionSave, loadMissionSave
+  autosave, resumeMission, hasMissionSave, clearMissionSave, loadMissionSave,
+  settings, setSetting, quality, buildAllOptions
 };

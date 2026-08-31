@@ -138,7 +138,7 @@ export class Ship {
 
   // --------------------------------------------------------------- power ----
 
-  updatePower(dt) {
+  updatePower(dt, world) {
     const s = this.sliders;
     const sum = s.wep + s.shd + s.eng + s.sen;
     const out = this.def.reactor;
@@ -161,7 +161,8 @@ export class Ship {
       if (this.shieldHitCd <= 0 && this.shieldCollapseCd <= 0) {
         // battle damage degrades the emitters: a crippled hull can't heal-tank
         const integrity = Math.max(0.15, this.hull / this.hullMax);
-        const regen = this.def.shieldRegen * this._levelOf('shd') * integrity;
+        const diff = this.isPlayer ? 1 : ((world && world.enemyRegenMult) || 1);
+        const regen = this.def.shieldRegen * this._levelOf('shd') * integrity * diff;
         this.shield = Math.min(this.shieldMax, this.shield + regen * dt);
       }
     } else if (this.shield > 0) {
@@ -387,7 +388,7 @@ export class Ship {
   update(dt, world) {
     if (!this.alive) return;
     if (this.derelictHulk) return;      // a dead hull does nothing but drift
-    this.updatePower(dt);
+    this.updatePower(dt, world);
     if (!this.disabled) {
       this.updateWeapons(dt, world);
       this.updatePursuit(dt);

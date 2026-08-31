@@ -71,7 +71,7 @@
   }
   #topbar .obj b { color: var(--text); font-weight: 600; }
   .tb-btn {
-    padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px 13px; min-width: 40px; border: 1px solid var(--line); border-radius: 6px;
     background: var(--panel); color: var(--cyan); font-size: 11px; letter-spacing: 0.08em;
   }
   .tb-btn.active { border-color: var(--cyan); background: rgba(53,200,255,0.12); }
@@ -98,7 +98,8 @@
   }
   #btn-selall {
     background: var(--panel); border: 1px dashed var(--line); border-radius: 8px;
-    padding: 6px; font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em;
+    padding: 6px; min-height: 44px; flex-shrink: 0;
+    font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em;
   }
 
   /* ---------- bottom bar: weapons + orders ---------- */
@@ -109,7 +110,7 @@
   }
   #orders-row { display: flex; gap: 6px; justify-content: center; }
   .ord-btn {
-    padding: 7px 12px; font-size: 10px; letter-spacing: 0.08em;
+    padding: 8px 12px; font-size: 10px; letter-spacing: 0.08em;
     border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text);
   }
   .ord-btn.warn { color: var(--red); }
@@ -319,6 +320,64 @@
   .result-line .v { color: var(--cyan); }
   .result-line.bad .v { color: var(--red); }
 
+  /* ---------- touch targets ----------
+     A viewport audit at real iPhone sizes found the top-bar and order buttons
+     were only 27-29px tall — well under the 44pt minimum, and fiddly under a
+     thumb. Rather than inflating the HUD (the bottom bar already eats a third
+     of an iPhone SE in landscape), each small control carries an invisible
+     44x44 hit area centred on it. */
+  .tb-btn, .ord-btn, #btn-selall, #tut-skip, .sub-chip { position: relative; }
+  .tb-btn::after, .ord-btn::after, #btn-selall::after,
+  #tut-skip::after, .sub-chip::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 100%;
+    min-width: 46px; min-height: 46px;
+  }
+  /* the ship bar scrolls, which would clip an overflowing hit area, so this
+     one control gets real height instead of a pseudo-element */
+  #btn-selall::after { content: none; }
+
+  /* short landscape phones: trim the weapon bar so the viewport stays usable */
+  @media (max-height: 360px) {
+    .wpn-btn { width: 64px; min-width: 64px; height: 54px; }
+    .wpn-btn .nm { font-size: 9px; }
+    #bottombar { gap: 4px; padding-top: 4px; }
+    #shipbar { max-height: 60%; width: 116px; }
+  }
+
+  /* ---------- settings options ---------- */
+  .opt-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opt-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.12em; margin-bottom: 5px; }
+  .opt-btn {
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 11px;
+    font-size: 10px; letter-spacing: 0.06em; color: var(--text-dim);
+    background: rgba(53,200,255,0.03);
+  }
+  .opt-btn.on { border-color: var(--cyan); color: var(--cyan); background: rgba(53,200,255,0.14); }
+
+  /* ---------- accessibility ---------- */
+  /* Larger text scales the HUD's type and its touch targets together, so the
+     controls stay comfortable rather than just becoming crowded. */
+  html.large-text .ship-card .nm { font-size: 13px; }
+  html.large-text .ship-card .cls,
+  html.large-text .wpn-btn .sub,
+  html.large-text .wpn-btn .typ { font-size: 10px; }
+  html.large-text .tb-btn,
+  html.large-text .ord-btn { font-size: 12px; padding: 9px 14px; }
+  html.large-text .wpn-btn { width: 84px; min-width: 84px; height: 70px; }
+  html.large-text .wpn-btn .nm { font-size: 12px; }
+  html.large-text #targetpanel { width: 172px; font-size: 11px; }
+  html.large-text #tutorial { font-size: 11px; }
+  html.large-text #shipbar { width: 148px; }
+  html.large-text #toast { font-size: 12px; }
+
+  html.reduced-motion #toast { transition: none; }
+  html.reduced-motion .wpn-btn .charge { transition: none; }
+  @media (prefers-reduced-motion: reduce) {
+    #toast, .wpn-btn .charge { transition: none; }
+  }
+
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
 </style>
@@ -391,6 +450,23 @@
       <h3>AUDIO</h3>
       <div class="eslider"><label>MUSIC</label><input type="range" id="vol-music" min="0" max="100" value="34"><output id="vol-music-o">34</output></div>
       <div class="eslider"><label>EFFECTS</label><input type="range" id="vol-sfx" min="0" max="100" value="80"><output id="vol-sfx-o">80</output></div>
+    </div>
+    <div class="panel-box">
+      <h3>DIFFICULTY</h3>
+      <div class="opt-row" id="opt-difficulty"></div>
+      <p class="dim" id="difficulty-desc" style="font-size:9px;margin-top:6px"></p>
+    </div>
+    <div class="panel-box">
+      <h3>ACCESSIBILITY</h3>
+      <div class="opt-label">TARGET &amp; SELECTION CUES</div>
+      <div class="opt-row" id="opt-color"></div>
+      <div class="opt-label" style="margin-top:10px">TEXT SIZE</div>
+      <div class="opt-row" id="opt-text"></div>
+      <div class="opt-label" style="margin-top:10px">MOTION</div>
+      <div class="opt-row" id="opt-motion"></div>
+      <div class="opt-label" style="margin-top:10px">GRAPHICS</div>
+      <div class="opt-row" id="opt-quality"></div>
+      <p class="dim" style="font-size:9px;margin-top:6px">AUTO sheds bloom, then resolution, then effect density if frames get long.</p>
     </div>
     <div id="howto" class="panel-box hidden" style="margin-top:20px">
       <h3>CONTROLS</h3>

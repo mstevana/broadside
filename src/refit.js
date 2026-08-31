@@ -74,8 +74,9 @@ export function renderDebrief(campaign, result, onContinue) {
 
   if (result.won) {
     const engBonus = campaign.attrs.engineering * 20;
-    const pts = m.basePoints + (result.secondaryMet ? m.secondaryPoints : 0) + engBonus
-      + (result.salvage || 0);
+    const pts = Math.round(
+      (m.basePoints + (result.secondaryMet ? m.secondaryPoints : 0) + engBonus
+        + (result.salvage || 0)) * (result.pointsMult || 1));
     const xp = m.xp + (result.secondaryMet ? m.secondaryXp : 0);
     html += `<div class="result-line"><span>Base award</span><span class="v">+${m.basePoints} pts</span></div>`;
     html += `<div class="result-line ${result.secondaryMet ? '' : 'bad'}"><span>Secondary — ${m.secondaryText}</span>`
