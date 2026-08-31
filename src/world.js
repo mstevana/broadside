@@ -11,6 +11,45 @@ const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _Y_AXIS = new THREE.Vector3(0, 1, 0);
+const _col = new THREE.Color();
+
+/** on-screen width of a selection ring's band, in CSS pixels */
+const SEL_RING_PX = 2.5;
+
+/** ship track: sample spacing, retained samples, and how long a sample lives */
+const TRAIL_STEP = 0.35;
+const TRAIL_MAX = 80;
+const TRAIL_LIFE = 26;
+
+/**
+ * Flat annulus whose two radii are supplied by the shader rather than baked
+ * into the positions, so the band can be re-sized every frame for free.
+ */
+function makeBandGeometry(segments) {
+  const dir = new Float32Array(segments * 2 * 2);
+  const edge = new Float32Array(segments * 2);
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const x = Math.cos(a), z = Math.sin(a);
+    dir[i * 4] = x; dir[i * 4 + 1] = z;         // inner vertex
+    dir[i * 4 + 2] = x; dir[i * 4 + 3] = z;     // outer vertex
+    edge[i * 2] = 0; edge[i * 2 + 1] = 1;
+  }
+  const idx = [];
+  for (let i = 0; i < segments; i++) {
+    const a = i * 2, b = a + 1;
+    const c = ((i + 1) % segments) * 2, d = c + 1;
+    idx.push(a, b, d, a, d, c);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('aDir', new THREE.BufferAttribute(dir, 2));
+  geo.setAttribute('aEdge', new THREE.BufferAttribute(edge, 1));
+  // 'position' is required by three's shader plumbing even though the vertex
+  // shader ignores it; a zeroed buffer keeps the attribute count consistent
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(segments * 2 * 3), 3));
+  geo.setIndex(idx);
+  return geo;
+}
 
 export class World {
   /** soft cap on simultaneous visual effects; lowered by the quality governor */
@@ -43,10 +82,14 @@ export class World {
 
     this._ringGeo = new THREE.RingGeometry(1, 1.12, 40);
     this._ringGeo.rotateX(-Math.PI / 2);
+    this._selRingGeo = makeBandGeometry(96);
+    // set by main once per frame so the ring band can be sized in pixels
+    this.viewMetrics = { pxPerUnitAt: () => 1 };
     this._tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
     this._tracerMats = new Map();
     this._selRings = new Map();   // shipId -> mesh
 
+    this._trails = new Map();      // shipId -> {line, pts:[{p,age}], acc}
     this._moveMarkers = new Map(); // shipId -> {ring, line, vline, diamond}
     this._blips = new Map();       // shipId -> sprite (unconfirmed sensor contacts)
     this._targetRing = this._makeRing(0xff5252);   // recoloured by setCuePalette
@@ -62,7 +105,7 @@ export class World {
   setCuePalette(palette) {
     this.cue = palette;
     if (this._targetRing) this._targetRing.material.color.setHex(palette.target);
-    for (const ring of this._selRings.values()) ring.material.color.setHex(palette.own);
+    for (const ring of this._selRings.values()) ring.material.uniforms.uColor.value.setHex(palette.own);
     for (const mk of this._moveMarkers.values()) {
       for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) {
         part.material.color.setHex(palette.waypoint);
@@ -79,6 +122,38 @@ export class World {
   }
 
   // =========================================================== marker kit ====
+
+  /**
+   * Selection ring: radius follows the hull, but the band stays SEL_RING_PX
+   * wide on screen at any zoom, and it depth-tests so the hull hides the far
+   * half. Each ring owns its material because the radii live in uniforms.
+   */
+  _makeSelRing(color) {
+    const m = new THREE.Mesh(this._selRingGeo, new THREE.ShaderMaterial({
+      uniforms: {
+        uInner: { value: 1 }, uOuter: { value: 1.1 },
+        uColor: { value: new THREE.Color(color) }, uOpacity: { value: 0.9 }
+      },
+      vertexShader: `
+        attribute vec2 aDir;
+        attribute float aEdge;
+        uniform float uInner;
+        uniform float uOuter;
+        void main() {
+          float r = mix(uInner, uOuter, aEdge);
+          gl_Position = projectionMatrix * modelViewMatrix
+                      * vec4(aDir.x * r, 0.0, aDir.y * r, 1.0);
+        }`,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        void main() { gl_FragColor = vec4(uColor, uOpacity); }`,
+      transparent: true, depthTest: true, depthWrite: false, side: THREE.DoubleSide
+    }));
+    m.frustumCulled = false;
+    m.renderOrder = 5;
+    return m;
+  }
 
   _makeRing(color) {
     const m = new THREE.Mesh(this._ringGeo, new THREE.MeshBasicMaterial({
@@ -622,6 +697,8 @@ export class World {
     const group = new THREE.Group();
     const wedges = new THREE.Group();     // rotates with the hull; rings don't
     group.add(wedges);
+    // one entry per mount, so a single weapon's envelope can be lit on its own
+    const entries = new Map();
     for (const w of ship.weapons) {
       if (w.hp <= 0 || !w.def.range) continue;    // hangar wings have no gun range
       const r = w.def.range;
@@ -636,6 +713,8 @@ export class World {
       );
       ring.renderOrder = 4;
       group.add(ring);
+
+      let wedge = null, fill = null;
       if (w.def.arc < 330) {
         const az = Math.atan2(w.slot.dir[0], w.slot.dir[2]);
         const half = THREE.MathUtils.degToRad(w.def.arc / 2);
@@ -645,16 +724,69 @@ export class World {
           pts.push(new THREE.Vector3(Math.sin(a) * r, 0, Math.cos(a) * r));
         }
         pts.push(new THREE.Vector3(0, 0, 0));
-        const wl = new THREE.Line(
+        wedge = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(pts),
           new THREE.LineBasicMaterial({ color: w.def.color, transparent: true, opacity: 0.22, depthWrite: false })
         );
-        wl.renderOrder = 4;
-        wedges.add(wl);
+        wedge.renderOrder = 4;
+        wedges.add(wedge);
+
+        // a translucent sector, hidden until this mount is the one being
+        // inspected — it makes the covered volume obvious at a glance
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0);
+        for (let i = 0; i <= 24; i++) {
+          const a = az - half + (i / 24) * 2 * half;
+          shape.lineTo(Math.sin(a) * r, Math.cos(a) * r);
+        }
+        shape.lineTo(0, 0);
+        const geo = new THREE.ShapeGeometry(shape);
+        geo.rotateX(-Math.PI / 2);        // shape XY -> world XZ
+        fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: w.def.color, transparent: true, opacity: 0, side: THREE.DoubleSide,
+          depthWrite: false
+        }));
+        fill.renderOrder = 3;
+        fill.visible = false;
+        wedges.add(fill);
+      } else {
+        // 360° mounts get a disc instead of a sector
+        const geo = new THREE.CircleGeometry(r, 48);
+        geo.rotateX(-Math.PI / 2);
+        fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: w.def.color, transparent: true, opacity: 0, side: THREE.DoubleSide,
+          depthWrite: false
+        }));
+        fill.renderOrder = 3;
+        fill.visible = false;
+        group.add(fill);
       }
+      entries.set(w.index, { w, ring, wedge, fill });
     }
     this.markerGroup.add(group);
-    this._rangeViz = { ship, group, wedges };
+    this._rangeViz = { ship, group, wedges, entries };
+    this.highlightWeaponRange(null);
+  }
+
+  /**
+   * Light one mount's envelope and dim the rest, so it is obvious which ring
+   * belongs to which gun. Pass null to return every ring to its resting state.
+   * @param {number|null} index  weapon slot index
+   */
+  highlightWeaponRange(index) {
+    const rv = this._rangeViz;
+    if (!rv) return;
+    this._highlightedWeapon = index;
+    const any = index != null && rv.entries.has(index);
+    for (const [i, e] of rv.entries) {
+      const on = any && i === index;
+      e.ring.material.opacity = on ? 0.95 : (any ? 0.04 : 0.1);
+      if (e.wedge) e.wedge.material.opacity = on ? 0.7 : (any ? 0.06 : 0.22);
+      if (e.fill) {
+        e.fill.visible = on;
+        e.fill.material.opacity = on ? 0.055 : 0;
+      }
+    }
   }
 
   setSelection(ships) {
@@ -664,7 +796,7 @@ export class World {
     }
     for (const s of ships) {
       if (!this._selRings.has(s.id)) {
-        const ring = this._makeRing(this.cue.own);
+        const ring = this._makeSelRing(this.cue.own);
         this._selRings.set(s.id, ring);
         this.markerGroup.add(ring);
       }
@@ -678,6 +810,8 @@ export class World {
     if (ring) { this.markerGroup.remove(ring); this._selRings.delete(ship.id); }
     const blip = this._blips.get(ship.id);
     if (blip) { this.markerGroup.remove(blip); this._blips.delete(ship.id); }
+    const tr = this._trails.get(ship.id);
+    if (tr) { this.markerGroup.remove(tr.line); tr.line.geometry.dispose(); this._trails.delete(ship.id); }
     const wp = this._wpPaths && this._wpPaths.get(ship.id);
     if (wp) { this.markerGroup.remove(wp); this._wpPaths.delete(ship.id); }
     const mk = this._moveMarkers.get(ship.id);
@@ -718,7 +852,86 @@ export class World {
     line.computeLineDistances();
   }
 
+  /**
+   * Every ship drags a slowly fading track behind it, so at a glance you can
+   * read where a formation came from and which way a contact is drifting.
+   * Colour rides on an additively-blended vertex colour: fading to black is
+   * what fades the line out, since line materials carry no per-vertex alpha.
+   */
+  _updateTrails(dt) {
+    const seen = new Set();
+    for (const s of this.ships) {
+      const show = s.alive && (s.isPlayer || s.detected);
+      if (!show) continue;
+      seen.add(s.id);
+      let tr = this._trails.get(s.id);
+      if (!tr) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3));
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+          vertexColors: true, transparent: true, opacity: 0.85,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+        line.frustumCulled = false;
+        line.renderOrder = 4;
+        this.markerGroup.add(line);
+        tr = { line, pts: [], acc: 0 };
+        this._trails.set(s.id, tr);
+      }
+      tr.acc += dt;
+      for (const q of tr.pts) q.age += dt;
+      // a sample every TRAIL_STEP seconds keeps the track evenly spaced in
+      // time, so a fast ship simply draws a longer one
+      if (tr.acc >= TRAIL_STEP) {
+        tr.acc = 0;
+        tr.pts.push({ p: s.pos.clone(), age: 0 });
+        if (tr.pts.length > TRAIL_MAX) tr.pts.shift();
+      }
+      while (tr.pts.length && tr.pts[0].age > TRAIL_LIFE) tr.pts.shift();
+
+      const n = tr.pts.length;
+      if (n < 2) { tr.line.visible = false; continue; }
+      tr.line.visible = true;
+      const pos = tr.line.geometry.attributes.position;
+      const col = tr.line.geometry.attributes.color;
+      const base = _col.setHex(s.isPlayer ? this.cue.own : this.cue.target);
+      for (let i = 0; i < n; i++) {
+        const q = tr.pts[i];
+        pos.setXYZ(i, q.p.x, q.p.y, q.p.z);
+        const f = Math.max(0, 1 - q.age / TRAIL_LIFE) * 0.55;
+        col.setXYZ(i, base.r * f, base.g * f, base.b * f);
+      }
+      // the head sits at the hull itself, so the track never lags the ship
+      pos.setXYZ(n - 1, s.pos.x, s.pos.y, s.pos.z);
+      pos.needsUpdate = true;
+      col.needsUpdate = true;
+      tr.line.geometry.setDrawRange(0, n);
+    }
+    for (const [id, tr] of this._trails) {
+      if (seen.has(id)) continue;
+      // contact lost or ship destroyed: let the track fade out where it lies
+      for (const q of tr.pts) q.age += dt;
+      while (tr.pts.length && tr.pts[0].age > TRAIL_LIFE) tr.pts.shift();
+      if (!tr.pts.length) {
+        this.markerGroup.remove(tr.line);
+        tr.line.geometry.dispose();
+        this._trails.delete(id);
+        continue;
+      }
+      const col = tr.line.geometry.attributes.color;
+      const base = _col.setHex(this.cue.target);
+      for (let i = 0; i < tr.pts.length; i++) {
+        const f = Math.max(0, 1 - tr.pts[i].age / TRAIL_LIFE) * 0.35;
+        col.setXYZ(i, base.r * f, base.g * f, base.b * f);
+      }
+      col.needsUpdate = true;
+      tr.line.geometry.setDrawRange(0, tr.pts.length);
+    }
+  }
+
   updateMarkers(dt) {
+    if (this.trailsEnabled !== false) this._updateTrails(dt);
     const pulse = 1 + Math.sin(this.time * 5) * 0.08;
     for (const [id, ring] of this._selRings) {
       const s = this.ships.find(x => x.id === id);
@@ -726,7 +939,11 @@ export class World {
       ring.visible = true;
       ring.position.copy(s.pos);
       ring.position.y -= s.def.size * 0.7;
-      ring.scale.setScalar(s.def.size * 1.5);
+      const r = s.def.size * 1.5;
+      // one band width in world units at this ring's distance from the eye
+      const band = SEL_RING_PX * this.viewMetrics.unitsPerPixel(ring.position);
+      ring.material.uniforms.uInner.value = r;
+      ring.material.uniforms.uOuter.value = r + band;
     }
     // move order markers for player ships
     for (const s of this.ships) {

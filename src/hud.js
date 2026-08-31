@@ -28,6 +28,17 @@ export class HUD {
     this._toastTimer = null;
 
     $('btn-pause').addEventListener('click', () => cb.onPause());
+    // Keyboard: space pauses. Swallowed before the browser can scroll the page
+    // or re-fire whichever HUD button happens to hold focus.
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (this.root.classList.contains('hidden')) return;   // not in a mission
+      e.preventDefault();
+      if (t && typeof t.blur === 'function' && t !== document.body) t.blur();
+      cb.onPause();
+    });
     $('btn-speed').addEventListener('click', () => {
       $('btn-speed').textContent = cb.onSpeed();
     });
@@ -149,6 +160,8 @@ export class HUD {
     const row = $('weapon-row');
     row.innerHTML = '';
     this._weaponBtns = [];
+    this._inspected = null;
+    $('wpn-tip').classList.add('hidden');
     this._weaponsOf = ship;
     if (!ship) return;
     for (const w of ship.weapons) {
@@ -168,6 +181,7 @@ export class HUD {
           if (sq.launched) { sq.recall(); this.cb.onWing(sq, 'recall'); }
           else this.cb.onWing(sq, 'launch');
         });
+        this._wireInspect(b, w);
         row.appendChild(b);
         this._weaponBtns.push({
           w, sq, btn: b,
@@ -198,6 +212,7 @@ export class HUD {
         w.enabled = !w.enabled;
         b.classList.toggle('off', !w.enabled);
       });
+      this._wireInspect(b, w);
       row.appendChild(b);
       this._weaponBtns.push({
         w, btn: b,
@@ -206,6 +221,54 @@ export class HUD {
         bind: b.querySelector('.bind')
       });
     }
+  }
+
+  /**
+   * Hovering (or holding) a mount lights its range envelope in the viewport and
+   * prints the hard numbers, so "how far does this gun reach" has an answer
+   * without opening the refit screen. Kept off pointerdown's long-press path:
+   * these listeners only read, they never cancel the bind gesture.
+   */
+  _wireInspect(btn, w) {
+    const on = () => this.inspectWeapon(w);
+    const off = () => { if (this._inspected === w) this.inspectWeapon(null); };
+    btn.addEventListener('pointerenter', on);
+    btn.addEventListener('pointerdown', on);
+    btn.addEventListener('pointerleave', off);
+    btn.addEventListener('pointercancel', off);
+    // a mouse keeps the readout while the cursor stays on the button; touch has
+    // no hover, so lifting the finger is the only sensible end of the gesture
+    btn.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') off(); });
+    btn.addEventListener('focus', on);
+    btn.addEventListener('blur', off);
+  }
+
+  /** show one mount's envelope + stat line; null clears both */
+  inspectWeapon(w) {
+    if (this._inspected === w) return;
+    this._inspected = w;
+    const tip = $('wpn-tip');
+    for (const wb of this._weaponBtns) wb.btn.classList.toggle('inspect', wb.w === w);
+    this.cb.onInspectWeapon(w);
+    if (!w) { tip.classList.add('hidden'); return; }
+    const d = w.def;
+    const bit = (k, v) => `<span class="k">${k}</span> ${v}`;
+    const parts = [`<b>${d.name.toUpperCase()}</b>`];
+    if (d.craft) {
+      parts.push(bit('WING', `${d.count} ${d.craft.targetMounts ? 'GUNBOAT' : (d.craft.dmg.device > d.craft.dmg.hull ? 'BOMBER' : 'FIGHTER')}`));
+      parts.push(bit('SPD', d.craft.speed));
+      parts.push(bit('HP', d.craft.hp));
+    } else {
+      parts.push(bit('RANGE', `${d.range} u`));
+      parts.push(bit('ARC', d.arc >= 360 ? 'ALL-ROUND' : `${d.arc}°`));
+      parts.push(bit('CYCLE', `${d.charge.toFixed(1)} s`));
+      parts.push(bit('PWR', d.energy));
+      if (d.ammo) parts.push(bit('AMMO', `${w.ammo}/${d.ammo}`));
+      const dm = d.dmg || {};
+      parts.push(bit('DMG', `${dm.shield || 0} shd / ${dm.hull || 0} hull / ${dm.device || 0} dev`));
+    }
+    tip.innerHTML = parts.join('<span class="sep">|</span>');
+    tip.classList.remove('hidden');
   }
 
   // ------------------------------------------------- hostile order of battle ----

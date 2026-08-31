@@ -135,6 +135,7 @@ const hud = new HUD({
   onFocusDevice: (key) => mission && mission.setFocusDevice(key),
   onBindWeapon: (w) => mission && mission.bindWeapon(w),
   onWing: (sq, action) => mission && mission.wingCommand(sq, action),
+  onInspectWeapon: (w) => mission && mission.world.highlightWeaponRange(w ? w.index : null),
   onBehavior: (mode) => mission && mission.setBehavior(mode),
   onStop: () => mission && mission.allStop(),
   onPause: () => mission && mission.togglePause(),
@@ -157,11 +158,25 @@ const input = new InputController(camera, renderer.domElement, {
 
 // ------------------------------------------------------------ MissionRun ----
 
+/**
+ * How many world units one CSS pixel spans at a given point, used by markers
+ * that must keep a fixed on-screen size however far the camera pulls back.
+ */
+const viewMetrics = {
+  unitsPerPixel(worldPos) {
+    const dist = camera.position.distanceTo(worldPos);
+    const h = renderer.domElement.clientHeight || window.innerHeight;
+    return 2 * Math.tan((camera.fov * Math.PI / 180) / 2) * dist / h;
+  }
+};
+
 class MissionRun {
   constructor(missionDef, campaign, opts = {}) {
     this.def = missionDef;
     this.campaign = campaign;
     this.world = new World(scene);
+    this.world.viewMetrics = viewMetrics;
+    this.world.trailsEnabled = !settings.reducedMotion;
     this.selection = [];
     this.paused = false;
     this.timeScale = 1;
@@ -1065,7 +1080,7 @@ if ('serviceWorker' in navigator) {
 window.BS = {
   get mission() { return mission; },
   get campaign() { return campaign; },
-  audio, music, bloom, setBackdrop, renderer,
+  audio, music, bloom, setBackdrop, renderer, camera, input,
   autosave, resumeMission, hasMissionSave, clearMissionSave, loadMissionSave,
   settings, setSetting, quality, buildAllOptions
 };

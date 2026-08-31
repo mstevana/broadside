@@ -35,9 +35,10 @@ vendored in `vendor/`, so it also works fully offline.
 | Two-finger drag / pinch | Orbit / zoom camera (mouse: right-drag / wheel) |
 | Subsystem chip on the targeted hostile's card | Focus precision fire on that device (shield must be down; disruptor missiles punch through) |
 | Weapon buttons (bottom bar) | Toggle each weapon between firing and HOLD FIRE |
+| Hover (or hold) a weapon button | Lights that mount's range ring and firing arc in the viewport and prints its range, arc, cycle time, power draw and damage split |
 | **Long-press** a weapon button | Bind that weapon to the current target (per-weapon targeting); long-press again to release |
 | Wing button (hangar mounts) | Launch the squadron; tap again to recall |
-| ❚❚ | Tactical pause — the sim freezes but orders can still be issued |
+| ❚❚ or **Spacebar** | Tactical pause — the sim freezes but orders can still be issued |
 | 1× / 2× / 4× | Time compression |
 | **Long-press** open space | Queue another leg on the move order (dashed path shows the route) |
 | LINE / COLUMN / ECHELON / SCREEN | Cycle fleet formation |
@@ -61,6 +62,18 @@ rather than in a separate panel.
 Move orders show a pulsing marker (with a plane-projection line for off-plane
 targets) until the ship arrives. The selected ship also draws its weapon range
 rings and firing-arc wedges, so you can see which mounts will actually bear.
+Hovering — or, on touch, holding — a weapon button lights that one mount's ring,
+shades the volume its arc covers and dims the rest, with the hard numbers in a
+readout above the bar; the ring answers "does this gun reach", the number
+answers "by how much".
+
+Every ship drags a slowly fading track behind it, roughly half a minute long, so
+a glance shows where a formation came from and which way a contact is drifting.
+Tracks fade in place when a contact is lost. (Reduced motion turns them off.)
+
+The selection ring holds a constant on-screen thickness however far the camera
+pulls in or out, and depth-tests against the hull, so pulling the camera down to
+the plating does not turn it into a slab across the view.
 
 ## Formations and waypoints
 
