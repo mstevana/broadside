@@ -496,7 +496,7 @@ export const MISSIONS = [
   {
     id: 'm3', name: 'CUT THE TENDON', region: 'Meridian Drift — pursuit',
     briefing: 'A Lamprey leech-ship is fleeing toward the Drift with a captured datacore. Fleet Intelligence wants it INTACT.\n\n'
-      + 'Run it down and destroy its ENGINES — tap the ENGINES chip on the target panel to focus fire. Its shield must be down before '
+      + 'Run it down and destroy its ENGINES — designate it in the hostile list, then tap its ENGINES chip to focus fire. Its shield must be down before '
       + 'beams can reach devices; disruptor missiles punch through shields if you brought them. If it escapes the Drift edge, we lose the core. '
       + 'Its escort will try to buy it time.',
     secondaryText: 'Disable the Lamprey with its hull above 50% (do not wreck the prize).',

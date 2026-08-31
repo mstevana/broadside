@@ -21,7 +21,7 @@ const STEPS = [
   },
   {
     id: 'target',
-    text: 'Contact confirmed. TAP the enemy ship to designate it as your target.',
+    text: 'Contact confirmed. TAP the enemy — in the world or in the hostile list on the right — to designate it as your target.',
     done: (m) => m.selection.some(s => s.target && s.target.alive)
   },
   {

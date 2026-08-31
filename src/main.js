@@ -131,6 +131,7 @@ const hud = new HUD({
     return p && p.target && p.target.alive && p.target.detected ? p.target : null;
   },
   onSelectShip: (ship) => mission && mission.select(ship),
+  onTargetShip: (ship) => mission && mission.setTarget(ship),
   onFocusDevice: (key) => mission && mission.setFocusDevice(key),
   onBindWeapon: (w) => mission && mission.bindWeapon(w),
   onWing: (sq, action) => mission && mission.wingCommand(sq, action),
@@ -295,6 +296,7 @@ class MissionRun {
     this.world.setCuePalette(cues());
     hud.show();
     hud.buildShipBar();
+    hud.invalidateEnemyBar();
     this.select(this.world.commandShips()[0]);
     hud.setPaused(false);
     hud.setSpeed('1×');

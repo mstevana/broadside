@@ -94,25 +94,38 @@ export class HUD {
 
   // ---------------------------------------------------------- ship cards ----
 
+  /** force both rosters to rebuild on the next update */
+  invalidateEnemyBar() { this._enemySig = null; this._friendlySig = null; }
+
+  /** signature of the friendly roster — allies join mid-mission when a wave
+   *  spawns them, so the left bar cannot be built once and forgotten */
+  _friendlySignature(world) {
+    return world.ships.filter(s => s.controllable || s.ally)
+      .map(s => s.id).join(',');
+  }
+
   buildShipBar() {
     const bar = $('shipbar');
     bar.innerHTML = '';
     this._shipCards.clear();
     const world = this.cb.getWorld();
-    for (const s of world.ships) {
-      if (!s.controllable) continue;
+    // commanded hulls first, then allied convoys and installations — an escort
+    // mission is unplayable if you cannot see the thing you are escorting
+    const list = world.ships.filter(s => s.controllable)
+      .concat(world.ships.filter(s => s.ally));
+    for (const s of list) {
       const card = document.createElement('button');
-      card.className = 'ship-card';
+      card.className = 'ship-card' + (s.ally ? ' ally' : '');
       card.innerHTML = `
         <div class="nm">${s.name}</div>
         <div class="cls">${s.def.className}</div>
-        <div class="beh">F</div>
+        <div class="beh">${s.ally ? 'A' : 'F'}</div>
         <div class="bar shield"><i></i></div>
         <div class="bar hull"><i></i></div>`;
-      card.addEventListener('click', () => this.cb.onSelectShip(s));
+      if (!s.ally) card.addEventListener('click', () => this.cb.onSelectShip(s));
       bar.appendChild(card);
       this._shipCards.set(s.id, {
-        card,
+        card, ship: s,
         shield: card.querySelector('.bar.shield i'),
         hull: card.querySelector('.bar.hull i'),
         beh: card.querySelector('.beh')
@@ -195,52 +208,114 @@ export class HUD {
     }
   }
 
-  // --------------------------------------------------------- target panel ----
+  // ------------------------------------------------- hostile order of battle ----
+  //
+  // Mirrors the fleet list on the left. The designated target expands in place
+  // to carry the subsystem chips, rather than duplicating the same ship in a
+  // separate panel.
 
-  buildTargetPanel(target) {
-    this._targetOf = target;
-    const panel = $('targetpanel');
-    if (!target) { panel.classList.add('hidden'); return; }
-    panel.classList.remove('hidden');
-    $('tp-name').textContent = target.name;
-    $('tp-class').textContent = `${target.def.className} — ${target.def.role}`;
-    const subs = $('tp-subs');
-    subs.innerHTML = '';
+  /** signature of what the list should currently contain */
+  _enemySignature(world) {
     const prim = this.cb.getPrimary();
+    const tgt = prim && prim.target ? prim.target.id : 0;
+    return world.ships
+      .filter(s => !s.isPlayer && s.alive && (s.detected || s.blip))
+      .map(s => `${s.id}:${s.detected ? 1 : 0}:${s.disabled ? 1 : 0}`)
+      .join(',') + '|' + tgt;
+  }
 
-    const addChip = (key, label) => {
-      const chip = document.createElement('button');
-      chip.className = 'sub-chip';
-      chip.textContent = label;
-      chip.dataset.key = key;
-      chip.addEventListener('click', () => {
-        this.cb.onFocusDevice(prim && prim.focusDevice === key ? null : key);
-        this.buildTargetPanel(target);     // refresh focus highlight
-      });
-      subs.appendChild(chip);
-      return chip;
-    };
+  buildEnemyBar() {
+    const bar = $('enemybar');
+    const world = this.cb.getWorld();
+    bar.innerHTML = '';
+    this._enemyCards = [];
+    if (!world) return;
 
-    this._subChips = [];
-    for (const key of ['engines', 'shieldGen', 'sensors']) {
-      this._subChips.push({ key, dev: target.devices[key], chip: addChip(key, DEVICE_LABELS[key]) });
+    const prim = this.cb.getPrimary();
+    const target = prim && prim.target && prim.target.alive ? prim.target : null;
+    const list = world.ships.filter(s => !s.isPlayer && s.alive && (s.detected || s.blip));
+
+    const hdr = document.createElement('div');
+    hdr.className = 'hdr';
+    hdr.textContent = list.length ? `HOSTILES · ${list.filter(s => s.detected && !s.disabled).length}` : 'NO CONTACTS';
+    bar.appendChild(hdr);
+
+    for (const e of list) {
+      const card = document.createElement('button');
+      const unconfirmed = !e.detected;
+      const neutral = e.disabled;
+      card.className = 'enemy-card'
+        + (unconfirmed ? ' unconfirmed' : '')
+        + (neutral ? ' neutralised' : '')
+        + (e === target ? ' targeted' : '');
+
+      if (unconfirmed) {
+        card.innerHTML = `<div class="nm">UNKNOWN</div>
+          <div class="cls">unconfirmed contact</div>`;
+      } else {
+        const tag = e.derelictHulk ? 'HULK'
+          : (e.surrendered ? 'TAKEN' : (e.disabled ? 'DEAD' : ''));
+        card.innerHTML = `
+          <div class="nm">${e.name}</div>
+          <div class="cls">${e.def.className}</div>
+          ${tag ? `<div class="tag2">${tag}</div>` : ''}
+          <div class="bar shield"><i></i></div>
+          <div class="bar hull"><i></i></div>`;
+        card.addEventListener('click', () => this.cb.onTargetShip(e));
+      }
+      bar.appendChild(card);
+
+      const entry = {
+        ship: e, card,
+        shield: card.querySelector('.bar.shield i'),
+        hull: card.querySelector('.bar.hull i'),
+        chips: []
+      };
+
+      // the designated target carries the focus-fire chips inline
+      if (e === target && !neutral) {
+        const subs = document.createElement('div');
+        subs.className = 'subs';
+        const addChip = (key, label, dev, wpn) => {
+          const chip = document.createElement('button');
+          chip.className = 'sub-chip';
+          chip.textContent = label;
+          chip.addEventListener('click', (ev) => {
+            ev.stopPropagation();          // don't re-target the card
+            const p = this.cb.getPrimary();
+            this.cb.onFocusDevice(p && p.focusDevice === key ? null : key);
+            this.refreshSubChips();
+          });
+          subs.appendChild(chip);
+          entry.chips.push({ key, dev, wpn, chip });
+        };
+        for (const key of ['engines', 'shieldGen', 'sensors']) {
+          addChip(key, DEVICE_LABELS[key], e.devices[key], null);
+        }
+        e.weapons.forEach((w) => addChip('w:' + w.index, w.def.short, null, w));
+        card.appendChild(subs);
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = 'TAP SUBSYSTEM TO FOCUS FIRE';
+        card.appendChild(hint);
+      }
+      this._enemyCards.push(entry);
     }
-    target.weapons.forEach((w) => {
-      this._subChips.push({ key: 'w:' + w.index, wpn: w, chip: addChip('w:' + w.index, w.def.short) });
-    });
     this.refreshSubChips();
   }
 
   refreshSubChips() {
-    if (!this._subChips) return;
+    if (!this._enemyCards) return;
     const prim = this.cb.getPrimary();
     const focus = prim ? prim.focusDevice : null;
-    for (const c of this._subChips) {
-      const hp = c.dev ? c.dev.hp : c.wpn.hp;
-      const max = c.dev ? c.dev.max : c.wpn.max;
-      c.chip.classList.toggle('destroyed', hp <= 0);
-      c.chip.classList.toggle('dmg', hp > 0 && hp < max * 0.6);
-      c.chip.classList.toggle('focused', focus === c.key);
+    for (const e of this._enemyCards) {
+      for (const c of e.chips) {
+        const hp = c.dev ? c.dev.hp : c.wpn.hp;
+        const max = c.dev ? c.dev.max : c.wpn.max;
+        c.chip.classList.toggle('destroyed', hp <= 0);
+        c.chip.classList.toggle('dmg', hp > 0 && hp < max * 0.6);
+        c.chip.classList.toggle('focused', focus === c.key);
+      }
     }
   }
 
@@ -253,16 +328,30 @@ export class HUD {
     const sel = this.cb.getSelection();
     const selIds = new Set(sel.map(s => s.id));
 
-    // ship cards
+    const fsig = this._friendlySignature(world);
+    if (fsig !== this._friendlySig) { this._friendlySig = fsig; this.buildShipBar(); }
+
+    // friendly cards (commanded hulls and allies)
     for (const [id, els] of this._shipCards) {
-      const s = world.ships.find(x => x.id === id);
+      const s = els.ship;
       if (!s) continue;
       els.card.classList.toggle('selected', selIds.has(id));
       els.card.classList.toggle('dead', !s.alive);
       els.shield.style.transform = `scaleX(${(s.shield / s.shieldMax).toFixed(3)})`;
       els.hull.style.transform = `scaleX(${Math.max(0, s.hull / s.hullMax).toFixed(3)})`;
-      els.beh.textContent = BEHAVIOR_LABEL[s.behavior][0];
+      els.beh.textContent = s.ally ? 'A' : BEHAVIOR_LABEL[s.behavior][0];
     }
+
+    // hostile order of battle — rebuilt only when the roster or target changes
+    const sig = this._enemySignature(world);
+    if (sig !== this._enemySig) { this._enemySig = sig; this.buildEnemyBar(); }
+    for (const e of this._enemyCards || []) {
+      const s = e.ship;
+      if (!e.shield) continue;
+      e.shield.style.transform = `scaleX(${(s.shield / s.shieldMax).toFixed(3)})`;
+      e.hull.style.transform = `scaleX(${Math.max(0, s.hull / s.hullMax).toFixed(3)})`;
+    }
+    this.refreshSubChips();
 
     // weapon bar
     const prim = this.cb.getPrimary();
@@ -294,20 +383,6 @@ export class HUD {
       wb.btn.classList.toggle('bound', !!bt);
       const bindText = bt ? '»' + bt.name.slice(0, 7) : '';
       if (wb.bind.textContent !== bindText) wb.bind.textContent = bindText;
-    }
-
-    // target panel
-    const target = this.cb.getTarget();
-    if (target !== this._targetOf) this.buildTargetPanel(target);
-    if (target) {
-      if (!target.alive) { this.buildTargetPanel(null); }
-      else {
-        $('tp-shield').style.transform = `scaleX(${(target.shield / target.shieldMax).toFixed(3)})`;
-        $('tp-hull').style.transform = `scaleX(${Math.max(0, target.hull / target.hullMax).toFixed(3)})`;
-        $('tp-shield-v').textContent = `${Math.round(target.shield)}/${target.shieldMax}`;
-        $('tp-hull-v').textContent = `${Math.round(Math.max(0, target.hull))}/${target.hullMax}`;
-        this.refreshSubChips();
-      }
     }
 
     // energy panel

@@ -30,10 +30,10 @@ vendored in `vendor/`, so it also works fully offline.
 |---|---|
 | Tap open space | Move selected ships — horizontal move at the selection's current altitude |
 | Press + drag up/down | 3D move: the press point fixes the point on the horizontal plane, the drag sets ±altitude, release commits |
-| Tap enemy ship | Designate target for selected ships |
+| Tap enemy ship / right-bar card | Designate target for selected ships |
 | Tap own ship / left-bar card | Select ship (SELECT ALL selects the fleet) |
 | Two-finger drag / pinch | Orbit / zoom camera (mouse: right-drag / wheel) |
-| Subsystem chip on target panel | Focus precision fire on that device (shield must be down; disruptor missiles punch through) |
+| Subsystem chip on the targeted hostile's card | Focus precision fire on that device (shield must be down; disruptor missiles punch through) |
 | Weapon buttons (bottom bar) | Toggle each weapon between firing and HOLD FIRE |
 | **Long-press** a weapon button | Bind that weapon to the current target (per-weapon targeting); long-press again to release |
 | Wing button (hangar mounts) | Launch the squadron; tap again to recall |
@@ -43,6 +43,20 @@ vendored in `vendor/`, so it also works fully offline.
 | LINE / COLUMN / ECHELON / SCREEN | Cycle fleet formation |
 | PWR | Power sliders: WEAPONS / SHIELDS / ENGINES / SENSORS |
 | FOCUSED / AGGRESSIVE / DEFENSIVE | Behaviour: fire only at the assigned target / auto-acquire / return fire only |
+
+## Reading the battle
+
+The **left bar** is your order of battle: commanded hulls (tap to select) plus
+any allied convoys or installations the mission gives you, shown dashed and
+green — an escort mission is unplayable if you cannot see the thing you are
+escorting.
+
+The **right bar** mirrors it with the hostile order of battle: every confirmed
+contact with live shield and hull bars, tap to designate. Sensor contacts you
+have not resolved appear as dashed **UNKNOWN** cards, and captured, disabled or
+derelict hulls are dimmed and tagged. The ship you designate expands in place to
+carry its subsystem chips, so focus-fire targeting lives on the card itself
+rather than in a separate panel.
 
 Move orders show a pulsing marker (with a plane-projection line for off-plane
 targets) until the ship arrives. The selected ship also draws its weapon range
