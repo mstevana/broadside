@@ -11,6 +11,8 @@ import { InputController } from './input.js';
 import { HUD } from './hud.js';
 import { renderDebrief, renderRefit, renderSkirmishDebrief, commanderMods, closeModal } from './refit.js';
 import { makeStarfield } from './meshes.js';
+import { getBackdrop } from './backdrop.js';
+import { BloomComposer } from './bloom.js';
 import { audio } from './audio.js';
 import { music } from './music.js';
 import { Tutorial } from './tutorial.js';
@@ -28,6 +30,19 @@ $('canvas-host').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05080f);
 scene.add(makeStarfield());
+
+// bloom: engine flares, weapon fire and Vessari bioluminescence are already
+// the only genuinely bright pixels, so a simple bright-pass reads correctly
+// threshold sits above lit hull plating (~0.6 luminance) so only genuinely
+// emissive things — drive flares, beams, windows, veins — actually glow
+const bloom = new BloomComposer(renderer, { strength: 0.7, threshold: 0.88 });
+bloom.setSize(window.innerWidth, window.innerHeight);
+
+/** swap the deep-space backdrop (per mission region) */
+function setBackdrop(name) {
+  scene.background = name ? getBackdrop(name) : new THREE.Color(0x05080f);
+}
+setBackdrop('verge');
 scene.add(new THREE.AmbientLight(0x3a4e66, 2.0));
 scene.add(new THREE.HemisphereLight(0x8fb8d8, 0x1a2233, 1.4));
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
@@ -43,6 +58,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  if (bloom.enabled) bloom.setSize(window.innerWidth, window.innerHeight);
 });
 
 // -------------------------------------------------------------- campaign ----
@@ -494,6 +510,7 @@ function currentMissionDef() {
 }
 
 function gotoMenu() {
+  setBackdrop('home');
   campaign && saveCampaign();
   $('btn-continue').disabled = !loadCampaign();
   showScreen('screen-menu');
@@ -524,6 +541,9 @@ function gotoBriefing() {
     return `<p><b>${r.name}</b> — ${def.className}, ${weapons} weapons, hull ${r.hull}/${def.hull}</p>`;
   }).join('');
   showScreen('screen-brief');
+  // painting a backdrop costs ~200ms, so build it while the player reads the
+  // briefing rather than hitching the first frame of the mission
+  requestAnimationFrame(() => getBackdrop(m.backdrop || 'verge'));
   music.setTrack('verge');
   $('btn-launch').onclick = launchMission;
   $('btn-brief-back').onclick = gotoRefit;
@@ -542,6 +562,7 @@ function launchMission() {
     saveCampaign();
     mission.tutorial = new Tutorial(mission, hud);
   }
+  setBackdrop(currentMissionDef().backdrop || 'verge');
   music.setTrack(currentMissionDef().music || 'signal');
   audio.startAmbience();
 }
@@ -566,6 +587,7 @@ function startSkirmish() {
   for (const s of SCREENS) $(s).classList.add('hidden');
   mission = new MissionRun(SKIRMISH_MISSION, skirmishRun);
   mission.initUI();
+  setBackdrop(['verge', 'drift', 'shoal', 'anchorage'][(Math.random() * 4) | 0]);
   // no briefing, no orders phase: skirmish starts weapons-free
   for (const p of mission.world.playerShips()) p.behavior = 'aggressive';
   hud.refreshBehavior();
@@ -685,7 +707,7 @@ function frame() {
     camera.position.set(Math.sin(t) * 900, 260, Math.cos(t) * 900);
     camera.lookAt(0, 0, 0);
   }
-  renderer.render(scene, camera);
+  bloom.render(scene, camera);
   if (audio.ready) audio.setListener(camera);
 }
 frame();
@@ -704,5 +726,5 @@ if ('serviceWorker' in navigator) {
 window.BS = {
   get mission() { return mission; },
   get campaign() { return campaign; },
-  audio, music
+  audio, music, bloom, setBackdrop, renderer
 };

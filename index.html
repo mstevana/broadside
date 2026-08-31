@@ -230,6 +230,11 @@
     overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: calc(24px + var(--sat)) calc(16px + var(--sar)) calc(24px + var(--sab)) calc(16px + var(--sal));
   }
+  /* the title screen sits over the live backdrop rather than hiding it */
+  #screen-menu {
+    background:
+      radial-gradient(ellipse at 50% 38%, rgba(8,14,24,0.62) 0%, rgba(6,10,17,0.90) 68%);
+  }
   .screen .inner { width: 100%; max-width: 640px; }
   .title-big {
     font-size: 42px; letter-spacing: 0.35em; color: var(--cyan); font-weight: 700;

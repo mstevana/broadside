@@ -151,6 +151,23 @@ The game ships a web app manifest and a service worker that precaches every
 asset, so it installs to an iPhone/iPad home screen (fullscreen, landscape) and
 runs with no network at all.
 
+## Backdrop and bloom
+
+Space is never empty. Each mission region gets its own **procedural deep-space
+backdrop** — layered nebula banks, dust lanes, a graded star field and often a
+planet with a terminator and atmospheric rim — painted from a seeded RNG onto
+the six faces of a cube texture. One draw call, no assets. Nebula brightness is
+tonally compressed to a ceiling well under the bloom threshold, so the backdrop
+stays a backdrop instead of glowing. Regions are cached and prewarmed during the
+briefing screen, since painting one costs ~200 ms.
+
+**Bloom** is a small purpose-built composer (`src/bloom.js`) — bright-pass, two
+separable Gaussian mips, additive composite — because three's `UnrealBloomPass`
+lives in the addons we don't vendor. The threshold sits above lit hull plating,
+so only genuinely emissive things glow: drive flares, weapon tracers and beams,
+shield impacts, window strips and Vessari bioluminescence. It can be turned off
+wholesale (`bloom.setEnabled(false)`) with no targets allocated.
+
 ## Procedural textures
 
 There are no image assets — every map is drawn to a canvas at load time from a
@@ -220,6 +237,8 @@ src/craft.js    support-craft squadrons: launch, strike runs, escort, recovery
 src/tutorial.js contextual first-mission tutorial script
 src/merge.js    tiny geometry merger (keeps each hull to a few draw calls)
 src/textures.js procedural texture generation (plating, carapace, decals)
+src/backdrop.js procedural nebula/planet cube-texture backdrops
+src/bloom.js    self-contained bloom composer
 tools/bot.js    bot commander used for automated balance playtesting
 tools/playtest.js  headless campaign playtest harness
 sw.js           service worker (offline precache)

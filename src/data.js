@@ -401,7 +401,7 @@ export const MISSIONS = [
       { delay: 0, ships: [ { cls: 'vx_stinger', at: [900, 0, 1100] } ] },
       { delay: 38, ships: [ { cls: 'vx_stinger', at: [-1000, 60, 1100] } ] }
     ],
-    music: 'signal',
+    music: 'signal', backdrop: 'verge',
     basePoints: 130, secondaryPoints: 45, xp: 110, secondaryXp: 50,
     secondary: 'flagHull75'
   },
@@ -415,7 +415,7 @@ export const MISSIONS = [
       { delay: 0, ships: [ { cls: 'vx_stinger', at: [-1100, 0, 1200] }, { cls: 'vx_stinger', at: [-800, -80, 1500] } ] },
       { delay: 50, ships: [ { cls: 'vx_mantis', at: [-1500, 120, 900] } ] }
     ],
-    music: 'signal',
+    music: 'signal', backdrop: 'relay',
     basePoints: 160, secondaryPoints: 50, xp: 130, secondaryXp: 55,
     secondary: 'noDeviceLost'
   },
@@ -432,7 +432,7 @@ export const MISSIONS = [
         { cls: 'vx_stinger', at: [-350, 0, 1400] }, { cls: 'vx_stinger', at: [350, 40, 1400] }
       ] }
     ],
-    music: 'broadside',
+    music: 'broadside', backdrop: 'drift',
     basePoints: 190, secondaryPoints: 60, xp: 150, secondaryXp: 65,
     secondary: 'prizeIntact', special: 'disable_escape', escapeRadius: 9000
   },
@@ -447,7 +447,7 @@ export const MISSIONS = [
       { afterCleared: true, ships: [ { cls: 'vx_mantis', at: [-1300, 0, 1000] }, { cls: 'vx_lamprey', at: [-1000, 100, 1400] } ] },
       { afterCleared: true, ships: [ { cls: 'vx_basilisk', at: [0, -120, 1900] }, { cls: 'vx_stinger', at: [400, 0, 1700] } ] }
     ],
-    music: 'broadside',
+    music: 'broadside', backdrop: 'anchorage',
     basePoints: 230, secondaryPoints: 70, xp: 180, secondaryXp: 70,
     secondary: 'noShipLost'
   },
@@ -462,7 +462,7 @@ export const MISSIONS = [
       { delay: 40, ships: [ { cls: 'vx_hierophant', at: [0, 0, 2300], boss: true }, { cls: 'vx_stinger', at: [300, -60, 2100] }, { cls: 'vx_stinger', at: [-300, 60, 2100] } ] },
       { delay: 150, ships: [ { cls: 'vx_basilisk', at: [1500, 80, 1900] }, { cls: 'vx_basilisk', at: [-1500, -80, 1900] } ] }
     ],
-    music: 'leviathan',
+    music: 'leviathan', backdrop: 'shoal',
     basePoints: 300, secondaryPoints: 90, xp: 240, secondaryXp: 90,
     secondary: 'bossGenFirst'
   }
