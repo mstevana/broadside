@@ -136,6 +136,21 @@ loops exactly. Eight tracks, switched by context with crossfades:
 | *Homecoming* | lydian | debrief, victory |
 | *Dirge for the Fleet* | aeolian, tolling bells | debrief, defeat |
 
+## Interrupted battles
+
+A capital-ship engagement runs for minutes, which on a phone is long enough to
+be interrupted by a call or the OS evicting the tab. The live sim is serialized
+to `localStorage` on every pause, whenever the tab is hidden or the page goes
+away, and on a slow heartbeat during combat — ship positions, velocities and
+facing, hull/shield/device damage, reactor charge, per-weapon charge, ammo,
+hold-fire and bound targets, squadron state including craft in the air, orders,
+wave progress and mission bookkeeping. **RESUME BATTLE** then appears on the
+main menu.
+
+Projectiles in flight and visual effects are deliberately dropped; a resumed
+battle losing one volley mid-air is imperceptible and reproducing them isn't
+worth the complexity.
+
 ## Skirmish
 
 An endless escalating wave mode off the main menu with its own three-ship fleet,
@@ -239,6 +254,7 @@ src/merge.js    tiny geometry merger (keeps each hull to a few draw calls)
 src/textures.js procedural texture generation (plating, carapace, decals)
 src/backdrop.js procedural nebula/planet cube-texture backdrops
 src/bloom.js    self-contained bloom composer
+src/persist.js  mid-mission save/resume serialization
 tools/bot.js    bot commander used for automated balance playtesting
 tools/playtest.js  headless campaign playtest harness
 sw.js           service worker (offline precache)

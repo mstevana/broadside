@@ -16,6 +16,7 @@ import { BloomComposer } from './bloom.js';
 import { audio } from './audio.js';
 import { music } from './music.js';
 import { Tutorial } from './tutorial.js';
+import { saveMission, loadMissionSave, clearMissionSave, hasMissionSave, restoreShip } from './persist.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'broadside_save_v1';
@@ -134,7 +135,7 @@ const input = new InputController(camera, renderer.domElement, {
 // ------------------------------------------------------------ MissionRun ----
 
 class MissionRun {
-  constructor(missionDef, campaign) {
+  constructor(missionDef, campaign, opts = {}) {
     this.def = missionDef;
     this.campaign = campaign;
     this.world = new World(scene);
@@ -158,14 +159,18 @@ class MissionRun {
     this.boss = null;
 
     const mods = commanderMods(campaign);
+    this.mods = mods;
 
-    // player fleet, line abreast, bows toward +Z
-    const n = campaign.fleet.length;
-    campaign.fleet.forEach((rec, i) => {
-      const ship = new Ship(rec, { commanderMods: mods });
-      const x = (i - (n - 1) / 2) * 160;
-      this.world.addShip(ship, new THREE.Vector3(x, 0, -900), new THREE.Vector3(x, 0, 0));
-    });
+    // player fleet, line abreast, bows toward +Z (skipped when resuming a save,
+    // which restores every hull from its serialized state instead)
+    if (!opts.restore) {
+      const n = campaign.fleet.length;
+      campaign.fleet.forEach((rec, i) => {
+        const ship = new Ship(rec, { commanderMods: mods });
+        const x = (i - (n - 1) / 2) * 160;
+        this.world.addShip(ship, new THREE.Vector3(x, 0, -900), new THREE.Vector3(x, 0, 0));
+      });
+    }
 
     // waves
     this.waves = missionDef.waves.map(w => ({ ...w, spawned: false }));
@@ -193,6 +198,57 @@ class MissionRun {
       }
       this.updateObjectiveText();
     };
+  }
+
+  /** rebuild a live battle from a serialized save */
+  restoreFrom(save) {
+    const r = save.run;
+    this.elapsed = r.elapsed;
+    this.world.time = r.worldTime;
+    this.timeScale = r.timeScale || 1;
+    this.waveNum = r.waveNum || 0;
+    this.kills = r.kills || 0;
+    this.salvage = r.salvage || 0;
+    this.lostShips = r.lostShips || [];
+    this.stats = r.stats || { dealt: {}, taken: {} };
+    this.deviceWasLost = !!r.deviceWasLost;
+    this.bossGenFirst = !!r.bossGenFirst;
+    this._bossGenAtHalf = r._bossGenAtHalf;
+    r.waves.forEach((w, i) => { if (this.waves[i]) this.waves[i].spawned = w.spawned; });
+
+    for (const rec of save.ships) {
+      const shipRec = rec.player
+        ? (this.campaign.fleet.find(f => f.name === rec.name) || makeShipRecord(rec.cls, rec.name))
+        : makeShipRecord(rec.cls, rec.name);
+      const ship = new Ship(shipRec, rec.player ? { commanderMods: this.mods } : {});
+      ship.name = rec.name;
+      this.world.addShip(ship, new THREE.Vector3(...rec.pos));
+      restoreShip(ship, rec, THREE);
+      if (rec.objectiveDisable) this.prize = ship;
+      if (rec.boss) this.boss = ship;
+      // wings that were in the air need their meshes back in the scene
+      for (const q of ship.squadrons) {
+        if (q.launched) {
+          for (const c of q.craft) {
+            if (!c.alive) continue;
+            if (!c.mesh) { q.launch(this.world); break; }
+          }
+        }
+      }
+    }
+    // re-link cross references now that every hull exists
+    const byId = new Map(this.world.ships.map(s => [s._savedId, s]));
+    save.ships.forEach((rec) => {
+      const ship = byId.get(rec.id);
+      if (!ship) return;
+      if (rec.targetId != null) ship.target = byId.get(rec.targetId) || null;
+      ship.weapons.forEach((w, wi) => {
+        const bid = rec.boundIds ? rec.boundIds[wi] : null;
+        if (bid != null) w.boundTarget = byId.get(bid) || null;
+      });
+    });
+    const sel = (r.selectionIds || []).map(id => byId.get(id)).filter(Boolean);
+    this.selection = sel.length ? sel : this.world.playerShips().slice(0, 1);
   }
 
   /** call after the global `mission` reference is assigned (HUD reads it) */
@@ -315,6 +371,7 @@ class MissionRun {
   togglePause() {
     this._tutSpeed = true;
     this.paused = !this.paused;
+    if (this.paused) autosave();
     hud.setPaused(this.paused);
     if (this.paused) hud.toast('PAUSED — orders can still be issued', 2000);
   }
@@ -513,8 +570,19 @@ function gotoMenu() {
   setBackdrop('home');
   campaign && saveCampaign();
   $('btn-continue').disabled = !loadCampaign();
+  refreshResumeButton();
   showScreen('screen-menu');
   music.setTrack('adrift');
+}
+
+function refreshResumeButton() {
+  const save = loadMissionSave();
+  const btn = $('btn-resume');
+  btn.classList.toggle('hidden', !save);
+  if (save) {
+    const def = save.skirmish ? { name: 'SKIRMISH' } : MISSIONS.find(m => m.id === save.missionId);
+    btn.textContent = `RESUME — ${def ? def.name : 'BATTLE'}`;
+  }
 }
 
 function gotoRefit() {
@@ -555,6 +623,7 @@ function launchMission() {
   fleetSnapshot = JSON.parse(JSON.stringify(campaign.fleet));
   saveCampaign();
   for (const s of SCREENS) $(s).classList.add('hidden');
+  clearMissionSave();
   mission = new MissionRun(currentMissionDef(), campaign);
   mission.initUI();
   if (campaign.missionIndex === 0 && !campaign.tutorialSeen) {
@@ -567,6 +636,30 @@ function launchMission() {
   audio.startAmbience();
 }
 
+/** rebuild an interrupted battle from its save */
+function resumeMission() {
+  const save = loadMissionSave();
+  if (!save) { gotoMenu(); return; }
+  const def = save.skirmish
+    ? SKIRMISH_MISSION
+    : MISSIONS.find(m => m.id === save.missionId);
+  if (!def) { clearMissionSave(); gotoMenu(); return; }
+
+  campaign = save.campaign;
+  if (save.skirmish) skirmishRun = save.campaign;
+  fleetSnapshot = save.fleetSnapshot;
+
+  for (const s of SCREENS) $(s).classList.add('hidden');
+  setBackdrop(def.backdrop || (save.skirmish ? 'drift' : 'verge'));
+  mission = new MissionRun(def, campaign, { restore: true });
+  mission.restoreFrom(save);
+  mission.initUI();
+  hud.setSpeed(`${mission.timeScale}×`);
+  music.setTrack(def.music || 'signal');
+  audio.startAmbience();
+  hud.toast('BATTLE RESUMED', 2600);
+}
+
 // ------------------------------------------------------------- skirmish ----
 
 const SKIRMISH_KEY = 'broadside_skirmish_best';
@@ -577,6 +670,7 @@ function skirmishBest() {
 }
 
 function startSkirmish() {
+  clearMissionSave();
   skirmishRun = {
     missionIndex: 0,
     fleet: SKIRMISH_FLEET.map(([cls, name]) => makeShipRecord(cls, name)),
@@ -597,6 +691,7 @@ function startSkirmish() {
 }
 
 function endMission(res) {
+  clearMissionSave();
   if (res.skirmish) {
     const best = skirmishBest();
     const isBest = res.score > best.score;
@@ -645,9 +740,11 @@ $('btn-continue').addEventListener('click', () => {
   campaign = loadCampaign() || newCampaign();
   gotoRefit();
 });
+$('btn-resume').addEventListener('click', resumeMission);
 $('btn-skirmish').addEventListener('click', startSkirmish);
 $('btn-howto').addEventListener('click', () => $('howto').classList.toggle('hidden'));
 $('btn-continue').disabled = !campaign;
+refreshResumeButton();
 
 // ------------------------------------------------------------------ audio ----
 
@@ -683,10 +780,26 @@ $('btn-sound').addEventListener('click', toggleSound);
 $('btn-sound-menu').addEventListener('click', toggleSound);
 syncSoundButtons();
 
+// -------------------------------------------------------------- autosave ----
+//
+// A battle runs for minutes; on a phone that is long enough to be interrupted.
+// Snapshot on every pause, whenever the tab is hidden or the page goes away,
+// and on a slow heartbeat while fighting.
+
+function autosave() {
+  if (!mission || mission.over) return;
+  saveMission(mission, campaign, { fleetSnapshot });
+}
+
+document.addEventListener('visibilitychange', () => { if (document.hidden) autosave(); });
+window.addEventListener('pagehide', autosave);
+window.addEventListener('beforeunload', autosave);
+
 // ------------------------------------------------------------------ loop ----
 
 const clock = new THREE.Clock();
 let hudAccum = 0;
+let autosaveAccum = 0;
 
 function frame() {
   requestAnimationFrame(frame);
@@ -700,6 +813,8 @@ function frame() {
       hud.update();
       if (mission && !mission.paused) mission.updateObjectiveText();
       if (mission && mission.tutorial) mission.tutorial.update(performance.now());
+      autosaveAccum += 0.1 * 10;
+      if (autosaveAccum > 20) { autosaveAccum = 0; autosave(); }
     }
   } else {
     // idle menu camera drift
@@ -726,5 +841,6 @@ if ('serviceWorker' in navigator) {
 window.BS = {
   get mission() { return mission; },
   get campaign() { return campaign; },
-  audio, music, bloom, setBackdrop, renderer
+  audio, music, bloom, setBackdrop, renderer,
+  autosave, resumeMission, hasMissionSave, clearMissionSave, loadMissionSave
 };
