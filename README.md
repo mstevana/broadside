@@ -256,13 +256,28 @@ runs with no network at all.
 
 ## Backdrop and bloom
 
-Space is never empty. Each mission region gets its own **procedural deep-space
-backdrop** — layered nebula banks, dust lanes, a graded star field and often a
-planet with a terminator and atmospheric rim — painted from a seeded RNG onto
-the six faces of a cube texture. One draw call, no assets. Nebula brightness is
-tonally compressed to a ceiling well under the bloom threshold, so the backdrop
-stays a backdrop instead of glowing. Regions are cached and prewarmed during the
-briefing screen, since painting one costs ~200 ms.
+Space is never empty. Each mission region paints its own sky onto a cube
+texture — one draw call — combining **real NASA/ESA/CSA nebula photography**
+with a procedural layer that surrounds it:
+
+- Six plates from the NASA Image and Video Library (Carina's Cosmic Cliffs,
+  the Southern Ring, Crab, Helix, Eagle and Tarantula nebulae) are projected
+  onto the sky **gnomonically**, so a nebula crosses cube-face boundaries
+  without a seam, and dissolved into space with a wide radial mask.
+- Procedural cloud banks, dust lanes, a planet with terminator and atmospheric
+  rim, and a graded star field that **skips anywhere a photograph already
+  supplies its own stars**.
+- Photographs are composited *after* tonal compression, as a cross-fade in
+  display space: running them through the compressor flattened their contrast
+  and turned the plate's soft edge into a visible cut.
+
+Total image weight is 280 KB for all six plates; each is brightness-limited at
+build time so the sky stays below the bloom threshold and reads as distance
+rather than glowing. Backdrops are LRU-cached (3 × ~2.3 MB) and prewarmed during
+the briefing, since painting one costs ~400 ms.
+
+Full attribution is in [CREDITS.md](CREDITS.md) and on the game's CREDITS
+screen. NASA does not endorse this game.
 
 **Bloom** is a small purpose-built composer (`src/bloom.js`) — bright-pass, two
 separable Gaussian mips, additive composite — because three's `UnrealBloomPass`
@@ -341,7 +356,8 @@ src/craft.js    support-craft squadrons: launch, strike runs, escort, recovery
 src/tutorial.js contextual first-mission tutorial script
 src/merge.js    tiny geometry merger (keeps each hull to a few draw calls)
 src/textures.js procedural texture generation (plating, carapace, decals)
-src/backdrop.js procedural nebula/planet cube-texture backdrops
+src/backdrop.js sky backdrops: NASA nebula plates + procedural clouds/planets
+assets/nebula/  NASA/ESA/CSA nebula photography (see CREDITS.md)
 src/bloom.js    self-contained bloom composer
 src/persist.js  mid-mission save/resume serialization
 src/formation.js fleet formation slot layouts

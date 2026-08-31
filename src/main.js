@@ -11,7 +11,7 @@ import { InputController } from './input.js';
 import { HUD } from './hud.js';
 import { renderDebrief, renderRefit, renderSkirmishDebrief, commanderMods, closeModal } from './refit.js';
 import { makeStarfield } from './meshes.js';
-import { getBackdrop } from './backdrop.js';
+import { getBackdrop, preloadNebulae } from './backdrop.js';
 import { BloomComposer } from './bloom.js';
 import { audio } from './audio.js';
 import { music } from './music.js';
@@ -52,11 +52,19 @@ const quality = new QualityGovernor({
 quality.applyManual();
 applyDocumentSettings();
 
-/** swap the deep-space backdrop (per mission region) */
+// Backdrops are built from NASA/ESA/CSA nebula plates, so generation waits on
+// image decode. A stale request (the player moved on) is discarded rather than
+// stomping the current sky.
+let backdropToken = 0;
 function setBackdrop(name) {
-  scene.background = name ? getBackdrop(name) : new THREE.Color(0x05080f);
+  const token = ++backdropToken;
+  if (!name) { scene.background = new THREE.Color(0x05080f); return; }
+  getBackdrop(name).then(tex => {
+    if (token === backdropToken) scene.background = tex;
+  }).catch(() => { /* keep whatever sky we have */ });
 }
-setBackdrop('verge');
+preloadNebulae();
+setBackdrop('home');
 scene.add(new THREE.AmbientLight(0x3a4e66, 2.0));
 scene.add(new THREE.HemisphereLight(0x8fb8d8, 0x1a2233, 1.4));
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
@@ -780,7 +788,7 @@ function gotoBriefing() {
   showScreen('screen-brief');
   // painting a backdrop costs ~200ms, so build it while the player reads the
   // briefing rather than hitching the first frame of the mission
-  requestAnimationFrame(() => getBackdrop(m.backdrop || 'verge'));
+  requestAnimationFrame(() => { getBackdrop(m.backdrop || 'verge'); });
   music.setTrack('verge');
   $('btn-launch').onclick = launchMission;
   $('btn-brief-back').onclick = gotoRefit;
@@ -955,6 +963,7 @@ buildAllOptions();
 $('btn-resume').addEventListener('click', resumeMission);
 $('btn-skirmish').addEventListener('click', startSkirmish);
 $('btn-howto').addEventListener('click', () => $('howto').classList.toggle('hidden'));
+$('btn-credits').addEventListener('click', () => $('credits').classList.toggle('hidden'));
 $('btn-continue').disabled = !campaign;
 refreshResumeButton();
 

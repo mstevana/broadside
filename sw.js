@@ -8,7 +8,11 @@ const ASSETS = [
   './src/ai.js', './src/input.js', './src/hud.js', './src/refit.js',
   './src/meshes.js', './src/audio.js', './src/music.js', './src/craft.js',
   './src/tutorial.js', './src/merge.js', './src/textures.js', './src/backdrop.js', './src/bloom.js', './src/persist.js', './src/formation.js', './src/settings.js',
-  './icons/icon-192.png', './icons/icon-512.png'
+  './icons/icon-192.png', './icons/icon-512.png',
+  // NASA/ESA/CSA nebula plates — see CREDITS.md
+  './assets/nebula/carina.jpg', './assets/nebula/helix.jpg',
+  './assets/nebula/crab.jpg', './assets/nebula/southernring.jpg',
+  './assets/nebula/eagle.jpg', './assets/nebula/tarantula.jpg'
 ];
 
 self.addEventListener('install', (e) => {
