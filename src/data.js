@@ -127,7 +127,7 @@ export const WEAPONS = {
   },
   v_plasma_arc: {
     id: 'v_plasma_arc', name: 'Plasma Arc', short: 'P-ARC', type: 'laser', role: 'shield',
-    dmg: { shield: 24, hull: 2, device: 0 }, bleed: 0.05,
+    dmg: { shield: 34, hull: 2, device: 0 }, bleed: 0.05,
     range: 1400, charge: 6.0, energy: 18, ammo: null, arc: 260,
     color: 0x59ffc8, cost: 0, enemyOnly: true,
     desc: 'Vessari shield-stripping arc.'

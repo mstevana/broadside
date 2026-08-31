@@ -186,6 +186,11 @@ class MissionRun {
       if (target.isPlayer) {
         this.stats.taken[target.name] = (this.stats.taken[target.name] || 0) + amount;
       }
+      // the Shoal remembers which hull is hurting it most
+      if (shooter.isPlayer && !target.isPlayer) {
+        const t = this.world._threat || (this.world._threat = new Map());
+        t.set(shooter.id, (t.get(shooter.id) || 0) + amount);
+      }
     };
     this.world.onShipKilled = (ship) => this.onShipKilled(ship);
     this.world.onShipDisabled = (ship) => {

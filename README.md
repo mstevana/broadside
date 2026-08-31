@@ -136,6 +136,31 @@ loops exactly. Eight tracks, switched by context with crossfades:
 | *Homecoming* | lydian | debrief, victory |
 | *Dirge for the Fleet* | aeolian, tolling bells | debrief, defeat |
 
+## The Vessari fight with your toolkit
+
+The Shoal is not on a reduced ruleset — it uses the same systems the player
+does:
+
+- **Pack doctrine** — the fleet agrees on one focus target every few seconds,
+  weighting wounded hulls, ships with their deflector already down, the
+  anti-shield "can opener", carriers with wings in the air, and whichever hull
+  has been hurting them most (a decaying threat memory fed by the damage
+  stream).
+- **Surgical targeting** — once a deflector drops the pack commits to a
+  subsystem: drives on anything trying to leave, the shield generator on
+  anything standing and fighting, and point-defence mounts first when it wants
+  its spore swarms to land.
+- **Weapon discipline** — arcs are held once a shield is down, hull guns while
+  it is up (opening early as it nears collapse), device weapons only when they
+  can actually reach a device.
+- **Carriers** launch drone wings against a chosen target and recall
+  interceptors to screen the carrier when missiles are inbound.
+- **Withdrawal** — a mauled light hull disengages once; if the whole pack is
+  losing badly the survivors break contact together, then turn and fight rather
+  than kiting forever.
+- **Power posture** follows the situation: shields when stripped, weapons when
+  the victim's deflector is down.
+
 ## Interrupted battles
 
 A capital-ship engagement runs for minutes, which on a phone is long enough to
