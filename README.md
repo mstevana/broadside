@@ -35,11 +35,24 @@ vendored in `vendor/`, so it also works fully offline.
 | Two-finger drag / pinch | Orbit / zoom camera (mouse: right-drag / wheel) |
 | Subsystem chip on target panel | Focus precision fire on that device (shield must be down; disruptor missiles punch through) |
 | Weapon buttons (bottom bar) | Toggle each weapon between firing and HOLD FIRE |
+| **Long-press** a weapon button | Bind that weapon to the current target (per-weapon targeting); long-press again to release |
+| Wing button (hangar mounts) | Launch the squadron; tap again to recall |
+| ❚❚ | Tactical pause — the sim freezes but orders can still be issued |
+| 1× / 2× / 4× | Time compression |
 | PWR | Power sliders: WEAPONS / SHIELDS / ENGINES / SENSORS |
 | FOCUSED / AGGRESSIVE / DEFENSIVE | Behaviour: fire only at the assigned target / auto-acquire / return fire only |
 
 Move orders show a pulsing marker (with a plane-projection line for off-plane
-targets) until the ship arrives.
+targets) until the ship arrives. The selected ship also draws its weapon range
+rings and firing-arc wedges, so you can see which mounts will actually bear.
+
+## Sensors and fog of war
+
+Enemies are invisible until one of your ships has them on sensors. Just beyond
+that range they show as pulsing unconfirmed contacts that cannot be tapped or
+fired at. Sensor reach depends on the hull, the SENSORS power slider, the
+Science attribute, and whether the sensor array is still intact — which is what
+makes the Sabre's scanner refit and sensor power allocation matter.
 
 ## The kill chain
 
@@ -49,6 +62,18 @@ targets) until the ship arrives.
 
 Shield regeneration pauses for a few seconds whenever the shield takes damage, so
 sustained anti-shield fire wins; trickle fire doesn't.
+
+**Support craft** are the exception to all of the above: wings launched from a
+hangar mount fly *inside* the enemy deflector envelope, so their strikes land on
+hull and subsystems whether or not the shield is up. The counter is
+point-defence — PD grids and flak batteries engage craft as well as missiles.
+Interceptors screen the carrier, bombers torch subsystems, gunboats hunt weapon
+mounts (point-defence first).
+
+**Prize capture.** Strip a Vessari hull's engines and every gun mount and it
+strikes its colours: it stops fighting, stops blocking the mission, and pays
+salvage points at the debrief. Precision play with anti-device weapons pays
+better than blowing everything up.
 
 **Power is the real limit.** The reactor output is split across the four sliders;
 the weapons share refills a reserve cell and every shot spends from it. Even a
@@ -111,6 +136,21 @@ loops exactly. Eight tracks, switched by context with crossfades:
 | *Homecoming* | lydian | debrief, victory |
 | *Dirge for the Fleet* | aeolian, tolling bells | debrief, defeat |
 
+## Skirmish
+
+An endless escalating wave mode off the main menu with its own three-ship fleet,
+independent of campaign progress. Waves mix in heavier Vessari hulls as they
+climb, with a Hierophant every fourth wave from wave 8. Between waves the fleet
+gets a partial hull patch, device restoration and a magazine restock. Scores
+waves survived, hulls destroyed or captured, and salvage, with a persistent
+personal best.
+
+## Install / offline
+
+The game ships a web app manifest and a service worker that precaches every
+asset, so it installs to an iPhone/iPad home screen (fullscreen, landscape) and
+runs with no network at all.
+
 ## Code layout
 
 ```
@@ -123,6 +163,11 @@ src/ai.js       Vessari behaviour (orbit-and-strip, leech hunting, flee logic)
 src/input.js    touch/mouse gestures, orbit camera, move-with-altitude gesture
 src/audio.js    Web Audio SFX engine: synthesis, spatialization, reverb, ambience
 src/music.js    generative music engine + the eight track definitions
+src/craft.js    support-craft squadrons: launch, strike runs, escort, recovery
+src/tutorial.js contextual first-mission tutorial script
+src/merge.js    tiny geometry merger (keeps each hull to a few draw calls)
+sw.js           service worker (offline precache)
+manifest.webmanifest, icons/  PWA install metadata
 src/hud.js      combat DOM HUD
 src/refit.js    debrief + spaceport screens, economy
 src/meshes.js   procedural ship meshes, starfield, glow sprites
@@ -134,7 +179,13 @@ src/main.js     campaign state machine, mission runner, render loop
 - The click+drag altitude gesture is implemented as *press → drag → release*
   (plane point on press, altitude while dragging, commit on release) — one fluid
   motion suits touch better than two separate clicks.
-- Behaviour modes: Aggressive / Defensive / Focused (Custom omitted).
+- Behaviour modes: Aggressive / Defensive / Focused (Custom omitted). FOCUSED
+  ships hold fire until you give them a target — that is deliberate, and the
+  tutorial teaches it; skirmish starts weapons-free instead since it has no
+  briefing.
+- Ships are built procedurally from primitives and merged per material at
+  authoring time: each capital ship is 2–6k triangles in ~8–13 draw calls, so
+  the detail costs almost nothing on a phone.
 - Support craft (fighters, bombers, gunboats, boarding) are out of scope for this
   version; the anti-device layer covers their tactical role. Natural next step.
 - Weapon "swapping between missions" is free; buying new weapons costs points.

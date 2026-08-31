@@ -95,6 +95,7 @@ export class Ship {
     this.mesh = built.group;
     this.spinParts = built.spin;
     this.engineGlows = built.engines;
+    this.veins = built.veins || null;      // Vessari bioluminescence
     this.mesh.userData.ship = this;
 
     // per-ship scratch
@@ -338,6 +339,12 @@ export class Ship {
     this.mesh.position.copy(this.pos);
     this.mesh.quaternion.copy(this.quat);
     for (const p of this.spinParts) p.rotation.z += dt * 0.8;   // habitat ring
+    if (this.veins) {
+      // slow bioluminescent breathing, faster and dimmer as the hull fails
+      const health = Math.max(0.15, this.hull / this.hullMax);
+      this._veinPhase = (this._veinPhase || this.id) + dt * (1.1 + (1 - health) * 3.2);
+      this.veins.material.opacity = (0.45 + 0.4 * Math.sin(this._veinPhase)) * health;
+    }
     // engine glow reacts to actual thrust, not just speed
     const thrust = this.vel.length() / Math.max(1, this.def.speed);
     const burning = this.moveTarget ? 1 : 0.45;
