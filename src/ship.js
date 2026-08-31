@@ -89,6 +89,7 @@ export class Ship {
     this.vel = new THREE.Vector3();
     this.quat = new THREE.Quaternion();
     this.moveTarget = null;              // THREE.Vector3 | null
+    this.waypoints = [];                 // queued legs after moveTarget
     this.behavior = 'focused';           // focused | aggressive | defensive
     this.target = null;                  // assigned enemy Ship
     this.focusDevice = null;             // device key on target | null (=> hull/auto)
@@ -300,7 +301,8 @@ export class Ship {
       _v2.copy(this.moveTarget).sub(this.pos);
       const dist = _v2.length();
       if (dist < Math.max(40, this.def.size * 1.6) && this.vel.length() < 12) {
-        this.moveTarget = null;               // arrived
+        // arrived — pick up the next leg if this was a multi-leg order
+        this.moveTarget = this.waypoints.length ? this.waypoints.shift() : null;
         if (this.onArrive) this.onArrive();
       } else {
         // arrive steering: cap speed by braking distance

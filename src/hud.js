@@ -33,6 +33,7 @@ export class HUD {
     });
     $('btn-stop').addEventListener('click', () => cb.onStop());
     $('tut-skip').addEventListener('click', () => cb.onSkipTutorial());
+    $('btn-form').addEventListener('click', () => { $('btn-form').textContent = cb.onFormation(); });
     $('btn-behavior').addEventListener('click', () => {
       const prim = cb.getPrimary();
       if (!prim) return;
@@ -81,6 +82,7 @@ export class HUD {
   }
 
   setSpeed(label) { $('btn-speed').textContent = label; }
+  setFormation(label) { $('btn-form').textContent = label; }
 
   /** tutorial banner; pass null to clear */
   tutorial(text) {

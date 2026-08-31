@@ -156,20 +156,22 @@ export class InputController {
       point.y += mg.altitude;
       this.cancelMoveGesture();
       this.gesture = null;
-      this.cb.onMoveCommand(point);
+      this.cb.onMoveCommand(point, false);
       return;
     }
 
     if (this.gesture === 'pending') {
       this.gesture = null;
       const dt = performance.now() - p.t;
-      if (dt <= TAP_MS * 2.2) this.handleTap(p.sx, p.sy);
+      // a long press on open space appends a leg rather than replacing the order
+      if (dt > 520) this.handleTap(p.sx, p.sy, true);
+      else if (dt <= TAP_MS * 2.2) this.handleTap(p.sx, p.sy, false);
     }
   }
 
   // ---------------------------------------------------------------- taps ----
 
-  handleTap(x, y) {
+  handleTap(x, y, queue = false) {
     const world = this.cb.getWorld();
     if (!world) return;
     const hit = this.pickShip(x, y, world);
@@ -180,7 +182,7 @@ export class InputController {
     }
     // tap on open space => horizontal move at the selection's altitude
     const point = this.pickPlane(x, y);
-    if (point) this.cb.onMoveCommand(point);
+    if (point) this.cb.onMoveCommand(point, queue);
     else if (this.cb.onTapNothing) this.cb.onTapNothing();
   }
 

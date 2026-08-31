@@ -16,6 +16,7 @@ import { BloomComposer } from './bloom.js';
 import { audio } from './audio.js';
 import { music } from './music.js';
 import { Tutorial } from './tutorial.js';
+import { formationPoints, FORMATIONS, FORMATION_ORDER } from './formation.js';
 import { saveMission, loadMissionSave, clearMissionSave, hasMissionSave, restoreShip } from './persist.js';
 
 const $ = (id) => document.getElementById(id);
@@ -117,6 +118,7 @@ const hud = new HUD({
   onStop: () => mission && mission.allStop(),
   onPause: () => mission && mission.togglePause(),
   onSpeed: () => mission ? mission.cycleSpeed() : '1×',
+  onFormation: () => mission ? mission.cycleFormation() : 'LINE ABREAST',
   onSkipTutorial: () => { if (mission) { mission.tutorial = null; hud.tutorial(null); } },
   onToggleFollow: () => {
     input.follow = !input.follow;
@@ -129,7 +131,7 @@ const input = new InputController(camera, renderer.domElement, {
   getSelection: () => mission ? mission.selection : [],
   onSelectShip: (ship) => mission && mission.select(ship),
   onTargetShip: (ship) => mission && mission.setTarget(ship),
-  onMoveCommand: (point) => mission && mission.moveCommand(point)
+  onMoveCommand: (point, queue) => mission && mission.moveCommand(point, queue)
 });
 
 // ------------------------------------------------------------ MissionRun ----
@@ -163,6 +165,7 @@ class MissionRun {
     this.boarded = 0;
     this.convoyArrived = false;
     this.holdRemaining = null;
+    this.formation = 'line';
 
     const mods = commanderMods(campaign);
     // a sensor blackout squeezes detection range fleet-wide for the mission
@@ -271,6 +274,7 @@ class MissionRun {
     this.select(this.world.commandShips()[0]);
     hud.setPaused(false);
     hud.setSpeed('1×');
+    hud.setFormation(FORMATIONS[this.formation].short);
     this.updateObjectiveText();
   }
 
@@ -383,24 +387,50 @@ class MissionRun {
     for (const s of this.selection) s.behavior = mode;
   }
 
-  moveCommand(point) {
+  /**
+   * @param {THREE.Vector3} point
+   * @param {boolean} queue  append as another leg instead of replacing
+   */
+  moveCommand(point, queue = false) {
     const sel = this.selection.filter(s => s.alive && s.controllable);
     if (!sel.length) return;
-    // preserve formation: offset each ship from the selection centroid
-    const centroid = new THREE.Vector3();
-    for (const s of sel) centroid.add(s.pos);
-    centroid.divideScalar(sel.length);
-    for (const s of sel) {
-      const offset = s.pos.clone().sub(centroid);
-      if (offset.length() > 400) offset.setLength(400);
-      s.moveTarget = point.clone().add(sel.length > 1 ? offset : new THREE.Vector3());
+
+    // ships take assigned slots in the current formation rather than drifting
+    // along with whatever spacing they happened to have
+    const pts = sel.length > 1
+      ? formationPoints(sel, point, this.formation)
+      : [point.clone()];
+
+    sel.forEach((s, i) => {
+      const p = pts[i];
+      if (queue && (s.moveTarget || s.waypoints.length)) {
+        s.waypoints.push(p);
+      } else {
+        s.moveTarget = p;
+        s.waypoints.length = 0;
+      }
       s._pursuitOrder = false;    // explicit orders override aggressive pursuit
-    }
+    });
+    if (queue) hud.toast(`WAYPOINT ${1 + (sel[0].waypoints.length)} PLOTTED`, 1400);
     this._tutMoved = true;
   }
 
+  cycleFormation() {
+    const i = FORMATION_ORDER.indexOf(this.formation);
+    this.formation = FORMATION_ORDER[(i + 1) % FORMATION_ORDER.length];
+    const f = FORMATIONS[this.formation];
+    hud.toast(`${f.name} — ${f.desc}`, 2600);
+    // re-form immediately if the fleet already has somewhere to be
+    const sel = this.selection.filter(s => s.alive && s.controllable);
+    if (sel.length > 1 && sel[0].moveTarget) {
+      const dest = sel[0].moveTarget.clone();
+      this.moveCommand(dest);
+    }
+    return f.short;
+  }
+
   allStop() {
-    for (const s of this.selection) s.moveTarget = null;
+    for (const s of this.selection) { s.moveTarget = null; s.waypoints.length = 0; }
     hud.toast('ALL STOP');
   }
 

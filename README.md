@@ -39,12 +39,30 @@ vendored in `vendor/`, so it also works fully offline.
 | Wing button (hangar mounts) | Launch the squadron; tap again to recall |
 | ❚❚ | Tactical pause — the sim freezes but orders can still be issued |
 | 1× / 2× / 4× | Time compression |
+| **Long-press** open space | Queue another leg on the move order (dashed path shows the route) |
+| LINE / COLUMN / ECHELON / SCREEN | Cycle fleet formation |
 | PWR | Power sliders: WEAPONS / SHIELDS / ENGINES / SENSORS |
 | FOCUSED / AGGRESSIVE / DEFENSIVE | Behaviour: fire only at the assigned target / auto-acquire / return fire only |
 
 Move orders show a pulsing marker (with a plane-projection line for off-plane
 targets) until the ship arrives. The selected ship also draws its weapon range
 rings and firing-arc wedges, so you can see which mounts will actually bear.
+
+## Formations and waypoints
+
+Multi-ship move orders assign each hull a slot in the current formation,
+oriented to the direction of travel, rather than preserving whatever spacing
+the fleet drifted into:
+
+- **Line abreast** — broadside on, every hull can bring side arcs to bear
+- **Column** — narrow profile, spinal guns clear of each other
+- **Echelon** — stepped back and out, nothing masks the ship behind it
+- **Screen** — escorts ring the flagship at three altitudes, overlapping
+  point-defence
+
+Slot spacing scales with the size of the hulls involved. Long-pressing open
+space appends a leg instead of replacing the order, so you can plot a route
+around a threat axis; the remaining legs are drawn as a dashed chain.
 
 ## Sensors and fog of war
 
@@ -295,6 +313,7 @@ src/textures.js procedural texture generation (plating, carapace, decals)
 src/backdrop.js procedural nebula/planet cube-texture backdrops
 src/bloom.js    self-contained bloom composer
 src/persist.js  mid-mission save/resume serialization
+src/formation.js fleet formation slot layouts
 tools/bot.js    bot commander used for automated balance playtesting
 tools/playtest.js  headless campaign playtest harness
 sw.js           service worker (offline precache)

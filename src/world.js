@@ -647,12 +647,44 @@ export class World {
     if (ring) { this.markerGroup.remove(ring); this._selRings.delete(ship.id); }
     const blip = this._blips.get(ship.id);
     if (blip) { this.markerGroup.remove(blip); this._blips.delete(ship.id); }
+    const wp = this._wpPaths && this._wpPaths.get(ship.id);
+    if (wp) { this.markerGroup.remove(wp); this._wpPaths.delete(ship.id); }
     const mk = this._moveMarkers.get(ship.id);
     if (mk) {
       for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) this.markerGroup.remove(part);
       this._moveMarkers.delete(ship.id);
     }
     if (this._targetShip === ship) this._targetShip = null;
+  }
+
+  /** dashed chain showing the remaining legs of a multi-leg order */
+  _updateWaypointPath(ship) {
+    if (!this._wpPaths) this._wpPaths = new Map();
+    let line = this._wpPaths.get(ship.id);
+    const pts = ship.waypoints || [];
+    if (!pts.length) { if (line) line.visible = false; return; }
+    if (!line) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * 16), 3));
+      line = new THREE.Line(geo, new THREE.LineDashedMaterial({
+        color: 0x4dd47a, transparent: true, opacity: 0.5,
+        dashSize: 26, gapSize: 18, depthWrite: false
+      }));
+      line.frustumCulled = false;
+      line.renderOrder = 5;
+      this.markerGroup.add(line);
+      this._wpPaths.set(ship.id, line);
+    }
+    line.visible = true;
+    const arr = line.geometry.attributes.position;
+    const chain = [ship.moveTarget, ...pts].slice(0, 16);
+    for (let i = 0; i < arr.count; i++) {
+      const p = chain[Math.min(i, chain.length - 1)];
+      arr.setXYZ(i, p.x, p.y, p.z);
+    }
+    arr.needsUpdate = true;
+    line.geometry.setDrawRange(0, chain.length);
+    line.computeLineDistances();
   }
 
   updateMarkers(dt) {
@@ -678,6 +710,7 @@ export class World {
         this._setMarkerVisible(mk, !!has);
         if (has) {
           const t = s.moveTarget;
+          this._updateWaypointPath(s);
           mk.diamond.position.copy(t);
           mk.ring.position.copy(t);
           mk.ring.scale.setScalar(26 * pulse);
