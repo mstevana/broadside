@@ -14,7 +14,9 @@ export class HUD {
   /**
    * @param {object} cb {
    *   getWorld, getSelection, getPrimary, getTarget,
-   *   onSelectShip, onFocusDevice, onBehavior, onStop, onPause, onToggleFollow
+   *   onSelectShip, onFocusDevice, onBehavior, onStop, onPause, onToggleFollow,
+   *   onToggleWeapon, onBindWeapon, onEnergy, onWing — all fleet-wide: they
+   *   apply to every selected ship, not just the one the bar is built from
    * }
    */
   constructor(cb) {
@@ -64,9 +66,8 @@ export class HUD {
 
     for (const k of ['wep', 'shd', 'eng', 'sen']) {
       $('es-' + k).addEventListener('input', (e) => {
-        const prim = cb.getPrimary();
-        if (!prim) return;
-        prim.sliders[k] = e.target.value / 100;
+        if (!cb.getPrimary()) return;
+        cb.onEnergy(k, e.target.value / 100);      // every selected hull
         $('eo-' + k).textContent = (e.target.value / 100).toFixed(1);
       });
     }
@@ -178,8 +179,9 @@ export class HUD {
       if (sq) {
         // hangar wing: tap launches or recalls, no hold-fire toggle
         b.addEventListener('click', () => {
-          if (sq.launched) { sq.recall(); this.cb.onWing(sq, 'recall'); }
-          else this.cb.onWing(sq, 'launch');
+          // the mission does the recalling, so it can do it for every selected
+          // carrier rather than just the one this button was built from
+          this.cb.onWing(sq, sq.launched ? 'recall' : 'launch');
         });
         this._wireInspect(b, w);
         row.appendChild(b);
@@ -209,8 +211,8 @@ export class HUD {
       b.addEventListener('click', () => {
         if (longFired) { longFired = false; return; }
         if (w.hp <= 0) return;
-        w.enabled = !w.enabled;
-        b.classList.toggle('off', !w.enabled);
+        // the mission fans this out to the same mount on every selected hull
+        b.classList.toggle('off', !this.cb.onToggleWeapon(w));
       });
       this._wireInspect(b, w);
       row.appendChild(b);

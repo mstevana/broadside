@@ -34,18 +34,25 @@ vendored in `vendor/`, so it also works fully offline.
 | Tap own ship / left-bar card | Select ship (SELECT ALL selects the fleet) |
 | Two-finger drag / pinch | Orbit / zoom camera (mouse: right-drag / wheel) |
 | Subsystem chip on the targeted hostile's card | Focus precision fire on that device (shield must be down; disruptor missiles punch through) |
-| Weapon buttons (bottom bar) | Toggle each weapon between firing and HOLD FIRE |
+| Weapon buttons (bottom bar) | Toggle each weapon between firing and HOLD FIRE — on every selected ship carrying that mount |
 | Hover (or hold) a weapon button | Lights that mount's range ring and firing arc in the viewport and prints its range, arc, cycle time, power draw and damage split |
-| **Long-press** a weapon button | Bind that weapon to the current target (per-weapon targeting); long-press again to release |
-| Wing button (hangar mounts) | Launch the squadron; tap again to recall |
+| **Long-press** a weapon button | Bind that weapon to the current target (per-weapon targeting); long-press again to release. Fleet-wide, each hull binding to its own designated target |
+| Wing button (hangar mounts) | Launch the squadron; tap again to recall — across every selected carrier |
 | ❚❚ or **Spacebar** | Tactical pause — the sim freezes but orders can still be issued |
 | 1× / 2× / 4× | Time compression |
 | **Long-press** open space | Queue another leg on the move order (dashed path shows the route) |
 | LINE / COLUMN / ECHELON / SCREEN | Cycle fleet formation |
-| PWR | Power sliders: WEAPONS / SHIELDS / ENGINES / SENSORS |
-| FOCUSED / AGGRESSIVE / DEFENSIVE | Behaviour: fire only at the assigned target / auto-acquire / return fire only |
+| PWR | Power sliders: WEAPONS / SHIELDS / ENGINES / SENSORS, applied to the whole selection |
+| FOCUSED / AGGRESSIVE / DEFENSIVE | Behaviour: concentrate on the assigned target, else free-fire on what is in reach / auto-acquire and close / return fire only |
 
 ## Reading the battle
+
+Every order is a **fleet order**: move, target, focus-fire, behaviour, all-stop,
+formation, power allocation, hold-fire, weapon binding and wing launches all
+apply to every selected ship. The weapon bar and power panel are built from the
+first ship in the selection, but they drive the matching mount on every hull
+that carries one — hold fire on RAIL with three cruisers selected and three
+railguns go quiet.
 
 The **left bar** is your order of battle: commanded hulls (tap to select) plus
 any allied convoys or installations the mission gives you, shown dashed and
@@ -464,9 +471,12 @@ src/main.js     campaign state machine, mission runner, render loop
   (plane point on press, altitude while dragging, commit on release) — one fluid
   motion suits touch better than two separate clicks.
 - Behaviour modes: Aggressive / Defensive / Focused (Custom omitted). FOCUSED
-  ships hold fire until you give them a target — that is deliberate, and the
-  tutorial teaches it; skirmish starts weapons-free instead since it has no
-  briefing.
+  concentrates the whole ship on the target you designate; with nothing
+  designated it free-fires on whatever is already inside a given mount's range
+  and arc, rather than sitting idle. It never goes sticky and never pursues —
+  that is what AGGRESSIVE is for — so it shoots what is in front of it and stops
+  when that leaves the envelope. Per-weapon HOLD FIRE is how you silence a mount
+  deliberately.
 - Ships are built procedurally from primitives and merged per material at
   authoring time: each capital ship is 2–6k triangles in ~8–13 draw calls, so
   the detail costs almost nothing on a phone.

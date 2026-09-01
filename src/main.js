@@ -137,6 +137,8 @@ const hud = new HUD({
   onTargetShip: (ship) => mission && mission.setTarget(ship),
   onFocusDevice: (key) => mission && mission.setFocusDevice(key),
   onBindWeapon: (w) => mission && mission.bindWeapon(w),
+  onToggleWeapon: (w) => mission ? mission.toggleWeapon(w) : !w.enabled,
+  onEnergy: (key, v) => mission && mission.setEnergy(key, v),
   onWing: (sq, action) => mission && mission.wingCommand(sq, action),
   onInspectWeapon: (w) => mission && mission.world.highlightWeaponRange(w ? w.index : null),
   onBehavior: (mode) => mission && mission.setBehavior(mode),
@@ -393,29 +395,70 @@ class MissionRun {
   }
 
   /** launch or recall a hangar wing */
+  /** launch or recall this wing on every selected carrier that has one */
   wingCommand(sq, action) {
+    const wings = [];
+    for (const s of this.selection) {
+      if (!s.alive || !s.controllable) continue;
+      for (const q of s.squadrons) if (q.def === sq.def) wings.push(q);
+    }
+    if (!wings.length) wings.push(sq);
+    const tag = (n) => `${sq.def.short}${n > 1 ? ` ×${n}` : ''}`;
     if (action === 'recall') {
-      hud.toast(`${sq.def.short} WING RECALLED`);
+      const out = wings.filter(q => q.state === 'launched');
+      for (const q of out) q.recall();
+      if (out.length) hud.toast(`${tag(out.length)} WING RECALLED`);
       return;
     }
-    if (!sq.operable) { hud.toast(`${sq.def.short} WING UNAVAILABLE`); return; }
-    if (sq.launch(this.world)) hud.toast(`${sq.def.short} WING AWAY`);
+    const able = wings.filter(q => q.operable);
+    if (!able.length) { hud.toast(`${sq.def.short} WING UNAVAILABLE`); return; }
+    const away = able.filter(q => q.launch(this.world)).length;
+    if (away) hud.toast(`${tag(away)} WING AWAY`);
+  }
+
+  /**
+   * The weapon bar is built from the primary ship, but an order given through it
+   * is a fleet order like any other: it applies to the same mount on every
+   * selected hull that carries one. Selecting three cruisers and holding fire on
+   * RAIL should silence three railguns, not one.
+   * @returns {Array} the matching weapons across the selection
+   */
+  matchingWeapons(w) {
+    const out = [];
+    for (const s of this.selection) {
+      if (!s.alive || !s.controllable) continue;
+      for (const x of s.weapons) if (x.def === w.def) out.push(x);
+    }
+    return out.length ? out : [w];
+  }
+
+  /** tap a weapon button: hold fire / resume, across the whole selection */
+  toggleWeapon(w) {
+    const all = this.matchingWeapons(w);
+    const on = !w.enabled;                       // the button's own state leads
+    for (const x of all) if (x.hp > 0) x.enabled = on;
+    const n = all.filter(x => x.hp > 0).length;
+    hud.toast(`${w.def.short}${n > 1 ? ` ×${n}` : ''}: ${on ? 'FIRING' : 'HOLD FIRE'}`, 1500);
+    return on;
   }
 
   /** long-press on a weapon button: bind/rebind/release it on the current target */
   bindWeapon(w) {
-    const prim = this.selection[0];
-    const t = prim && prim.target && prim.target.alive && prim.target.detected
-      ? prim.target : null;
-    if (t && w.boundTarget !== t) {
-      w.boundTarget = t;
-      hud.toast(`${w.def.short} BOUND → ${t.name}`);
-    } else if (w.boundTarget) {
-      w.boundTarget = null;
-      hud.toast(`${w.def.short}: bound target released`);
-    } else {
-      hud.toast('LONG-PRESS binds a weapon — designate a target first');
+    const all = this.matchingWeapons(w);
+    const release = !!w.boundTarget;
+    let bound = 0, name = '';
+    for (const x of all) {
+      const owner = this.selection.find(s => s.weapons.includes(x));
+      // each hull binds to its OWN designated target, so a fleet order does not
+      // quietly point one ship's guns at another ship's contact
+      const t = owner && owner.target && owner.target.alive && owner.target.detected
+        ? owner.target : null;
+      if (release) { x.boundTarget = null; continue; }
+      if (t) { x.boundTarget = t; bound++; name = t.name; }
     }
+    if (release) hud.toast(`${w.def.short}: bound target released`);
+    else if (bound) hud.toast(`${w.def.short} BOUND → ${bound > 1 ? `${bound} targets` : name}`);
+    else hud.toast('LONG-PRESS binds a weapon — designate a target first');
   }
 
   setTarget(enemy) {
@@ -431,6 +474,13 @@ class MissionRun {
 
   setFocusDevice(key) {
     for (const s of this.selection) s.focusDevice = key;
+  }
+
+  /** power allocation is a per-ship setting, so the slider drives them all */
+  setEnergy(key, v) {
+    for (const s of this.selection) {
+      if (s.alive && s.controllable) s.sliders[key] = v;
+    }
   }
 
   setBehavior(mode) {

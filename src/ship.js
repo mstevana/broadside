@@ -232,17 +232,33 @@ export class Ship {
       if (valid(this._autoFace) && this.pos.distanceTo(this._autoFace.pos) < this.sensorRange()) {
         return this._autoFace;
       }
-      // pick the nearest hostile within sensor range
-      let best = null, bd = Infinity;
-      for (const s of world.ships) {
-        if (!valid(s)) continue;
-        const d = this.pos.distanceTo(s.pos);
-        if (d < bd && d < this.sensorRange()) { bd = d; best = s; }
-      }
+      const best = this.nearestHostile(world, valid, this.sensorRange(), null);
       this._autoFace = best;      // so the hull turns its arcs onto the pick
       return best;
     }
-    return null; // focused with no assigned target: hold fire
+    // FOCUSED with nothing designated: engage whatever this mount can already
+    // reach rather than sitting idle. Deliberately not sticky and it never sets
+    // _autoFace, so the ship neither chases nor turns to chase — it shoots what
+    // is in front of it and stops when that leaves the envelope. Designating a
+    // target still overrides this, which is the whole point of the mode.
+    return this.nearestHostile(world, valid, Math.min(w.def.range, this.sensorRange()), w);
+  }
+
+  /**
+   * Nearest engageable hostile within `maxDist`. Pass a weapon to also require
+   * the contact be inside that mount's firing arc, so free fire picks something
+   * the gun can actually shoot rather than the nearest hull overall.
+   */
+  nearestHostile(world, valid, maxDist, w) {
+    let best = null, bd = Infinity;
+    for (const s of world.ships) {
+      if (!valid(s)) continue;
+      const d = this.pos.distanceTo(s.pos);
+      if (d >= bd || d >= maxDist) continue;
+      if (w && !this.inArc(w, s.pos)) continue;
+      bd = d; best = s;
+    }
+    return best;
   }
 
   inArc(w, targetPos) {
