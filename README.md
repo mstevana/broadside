@@ -188,9 +188,13 @@ Eight missions, only half of them elimination:
 | 7 | Hold the Wall | **Defend** a fixed station for four minutes |
 | 8 | Broadside | Kill the Hierophant |
 
-New objective types bring their own hulls: the unarmed Meridian freighter, the
-immobile Anchorage 7 station, the Vessari Bastion gun-spire and inert Tomb-Hulk
-derelicts. Allied hulls are human-faction (so the Shoal shoots them and they
+New objective types bring their own hulls, each with its own mesh: the Meridian
+is a bare keel with four ore hoppers slung under it and one small pressurised
+deck aft (nothing on it is armoured, which is the point of escorting it);
+Anchorage 7 is built around a core and a spun habitat ring rather than a bow and
+a stern, with its four gun sponsons out on arms and no drives at all, so it
+throws no plume and lays no wake. The Vessari Bastion gun-spire and the inert
+Tomb-Hulk derelicts are grown, not built. Allied hulls are human-faction (so the Shoal shoots them and they
 shoot back) but are not player-commanded — `controllable` separates the two. After each
 mission you get resource points for repairs, weapons and new hulls — **unspent
 points are lost at launch**. Secondary objectives pay extra points and XP. XP

@@ -344,7 +344,9 @@ const DECALS = {
   dd_sabre:     { code: 'DD-207', sub: 'SABRE',     accent: '#4dd47a' },
   dd_rapier:    { code: 'DD-214', sub: 'RAPIER',    accent: '#b07cff' },
   cr_bulwark:   { code: 'CA-32',  sub: 'BULWARK',   accent: '#35c8ff' },
-  cr_warhammer: { code: 'CA-40',  sub: 'WARHAMMER', accent: '#ffb545' }
+  cr_warhammer: { code: 'CA-40',  sub: 'WARHAMMER', accent: '#ffb545' },
+  tr_meridian:  { code: 'BC-88',  sub: 'MERIDIAN',  accent: '#ffb545' },
+  st_anchorage: { code: 'FS-07',  sub: 'ANCHORAGE', accent: '#4dd47a' }
 };
 
 const DECAL_MATS = new Map();
@@ -570,6 +572,173 @@ function buildCruiser(def, variant) {
   return { group, spin: [], engines, engineColor: ENGINE_COLOR.human };
 }
 
+// ------------------------------------------------------------ civilian ----
+
+/**
+ * Ore Freighter — a bulk hauler, not a warship: a bare spine with the cargo
+ * slung under it, one small pressurised deck aft and engines sized for a load
+ * it is not carrying. Nothing on it is armoured, which is the point of the
+ * escort missions it appears in.
+ */
+function buildFreighter(def) {
+  const h = new Hull();
+  const L = 58, W = 7;
+
+  // keel: an open truss rather than a hull, with a spine beam along the top
+  h.box(W * 0.55, 2.2, L, M.dark, [0, 3.0, 0]);
+  for (let i = 0; i < 9; i++) {
+    const z = -L * 0.44 + (L * 0.88) * (i / 8);
+    h.pair(sd => h.box(0.34, 0.34, 0.34, M.dark, [sd * W * 0.52, 1.2, z], { scale: [1, 12, 1] }));
+    h.box(W * 1.06, 0.3, 0.3, M.dark, [0, 4.2, z]);
+    h.box(W * 1.06, 0.3, 0.3, M.dark, [0, -1.4, z]);
+  }
+
+  // four ore hoppers hung off the keel — the whole reason the ship exists.
+  // Dark drums between bright end bands so the segmentation reads at range.
+  for (let i = 0; i < 4; i++) {
+    const z = -L * 0.30 + i * L * 0.20;
+    h.cyl(4.6, 4.6, L * 0.175, 12, M.dark, [0, -1.0, z], { rot: [Math.PI / 2, 0, 0] });
+    h.cyl(4.9, 4.9, 0.7, 12, M.trim, [0, -1.0, z - L * 0.085], { rot: [Math.PI / 2, 0, 0] });
+    h.cyl(4.9, 4.9, 0.7, 12, M.trim, [0, -1.0, z + L * 0.085], { rot: [Math.PI / 2, 0, 0] });
+    // clamshell loading hatch on top of each hopper, hazard lamp beside it
+    h.box(3.2, 0.6, L * 0.10, M.plate, [0, 3.3, z]);
+    h.pair(sd => h.box(0.4, 1.6, L * 0.12, M.trim, [sd * 4.4, 1.4, z]));
+    h.box(0.45, 0.45, 0.45, M.window, [1.9, 3.8, z]);
+  }
+
+  // blunt bow fairing: a cap over the forward hopper, no ram, no armour
+  h.cyl(2.6, 4.8, 7, 10, M.plate, [0, -1.0, L * 0.48], { rot: [Math.PI / 2, 0, 0] });
+  h.box(1.0, 1.0, 2.6, M.glow, [0, -1.0, L * 0.54]);
+  h.pair(sd => h.box(0.9, 0.9, 4, M.dark, [sd * 3.4, 2.6, L * 0.42]));
+
+  // crew deck aft, stacked on the keel — the only pressurised volume aboard
+  h.box(7.4, 4.4, 11, M.plate, [0, 5.6, -L * 0.30]);
+  h.box(5.6, 3.0, 7, M.hull, [0, 8.6, -L * 0.30]);
+  h.windows(M.window, { x: 0, y: 6.4, z: -L * 0.30, len: 8, count: 6 });
+  h.windows(M.window, { x: 0, y: 9.2, z: -L * 0.30, len: 5, count: 4 });
+  h.pair(sd => h.box(0.4, 2.4, 8, M.trim, [sd * 3.0, 7.4, -L * 0.30]));
+
+  // engineering block and the twin drives it feeds
+  h.box(9.0, 6.0, 12, M.plate, [0, 0.4, -L * 0.40]);
+  h.pair(sd => h.cyl(2.6, 3.2, 6.0, 10, M.dark, [sd * 3.0, 0.4, -L * 0.47], { rot: [Math.PI / 2, 0, 0] }));
+  h.pair(sd => h.greebleRow(M.dark, {
+    x: sd * 4.7, y: 0.4, z0: -L * 0.45, z1: -L * 0.34, n: 4, w: 0.8, h: 1.4, d: 2.0
+  }));
+
+  // radiator wings and a comms mast — a hauler sheds heat, it does not fight.
+  // Kept modest: oversized panels read as sails and swamp the hull.
+  h.pair(sd => {
+    h.box(0.9, 0.5, 3.0, M.dark, [sd * 5.8, -2.2, -L * 0.06]);            // stub pylon
+    h.box(0.26, 4.4, 11, M.plate, [sd * 8.0, -3.6, -L * 0.06], { rot: [0, 0, sd * 0.42] });
+    for (let i = 0; i < 3; i++) {
+      h.box(0.36, 4.6, 0.35, M.dark, [sd * 8.0, -3.6, -L * 0.06 - 3.6 + i * 3.6],
+        { rot: [0, 0, sd * 0.42] });
+    }
+  });
+  h.cyl(0.14, 0.14, 7, 4, M.trim, [0, 9.0, -L * 0.12]);
+  h.box(2.2, 0.2, 0.2, M.trim, [0, 12.2, -L * 0.12]);
+  h.box(0.5, 0.5, 0.5, M.window, [W * 0.78, 4.6, L * 0.34]);     // port running light
+  h.box(0.5, 0.5, 0.5, M.glow, [-W * 0.78, 4.6, L * 0.34]);      // starboard
+
+  const plateX = addNamePlate(h, { x: 4.6, y: 0.4, z: -L * 0.40, w: 8, h: 2.6 });
+  addMounts(h, def);
+  const group = h.assemble();
+  const engines = [];
+  for (const x of [-3.0, 3.0]) engines.push(addEngine(group, x, 0.4, -L * 0.52, 1.9, false));
+  addDecalPanels(group, def, { x: plateX, y: 0.4, z: -L * 0.40, w: 8, h: 2.6 });
+  return { group, spin: [], engines, engineColor: ENGINE_COLOR.human };
+}
+
+/**
+ * Fleet Station — a fixed installation, so it is built around a core and a
+ * rotating habitat ring rather than a bow and a stern, with the four weapon
+ * sponsons out on arms where the class's mount slots put them.
+ */
+function buildStation(def) {
+  const h = new Hull();
+
+  // central spindle: docking core above, reactor and magazine below
+  h.cyl(7.0, 7.0, 30, 12, M.hull, [0, 0, 0]);
+  h.cyl(9.5, 9.5, 5.0, 12, M.plate, [0, 9.0, 0]);
+  h.cyl(9.5, 9.5, 5.0, 12, M.plate, [0, -9.0, 0]);
+  h.cyl(4.4, 6.6, 8.0, 10, M.trim, [0, 17.0, 0]);
+  h.cyl(6.6, 4.4, 8.0, 10, M.trim, [0, -17.0, 0]);
+  h.box(2.0, 2.0, 2.0, M.glow, [0, 21.5, 0]);                    // beacon
+  for (let d = -2; d <= 2; d++) {
+    h.windows(M.window, { x: 0, y: d * 4.5, z: 7.2, len: 9, count: 6 });
+    h.windows(M.window, { x: 0, y: d * 4.5, z: -7.2, len: 9, count: 6 });
+  }
+
+  // Habitat ring on four spokes, spun for gravity. Its plane is normal to the
+  // station's LOCAL Y, not its Z: a station is looked at from above, and a ring
+  // stood on edge the way a warship's habitat drum sits would read as a bar.
+  // The spin group keeps its own XY plane so rotation.z still turns it in place.
+  const ring = new THREE.Group();
+  const rh = new Hull();
+  const R = 25, SEG = 34;
+  for (let i = 0; i < SEG; i++) {
+    const a = (i / SEG) * Math.PI * 2;
+    const x = Math.cos(a) * R, y = Math.sin(a) * R;
+    // alternating light hab modules and dark service bays, so the ring reads
+    // as a run of separate sections rather than one smooth band
+    rh.box(4.2, 2.9, 3.2, i % 4 === 0 ? M.trim : (i % 2 ? M.plate : M.dark),
+      [x, y, 0], { rot: [0, 0, a] });
+    if (i % 2) rh.box(0.5, 0.5, 3.4, M.window, [x * 1.05, y * 1.05, 0], { rot: [0, 0, a] });
+    if (i % 4 === 2) rh.box(0.8, 1.4, 0.8, M.dark, [x * 1.09, y * 1.09, 1.4], { rot: [0, 0, a] });
+  }
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2 + Math.PI / 4;
+    rh.box(1.3, R - 8, 1.3, M.dark, [Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, 0],
+      { rot: [0, 0, a - Math.PI / 2] });
+    rh.box(2.2, 2.2, 2.2, M.plate, [Math.cos(a) * (R - 4.5), Math.sin(a) * (R - 4.5), 0],
+      { rot: [0, 0, a] });
+  }
+  ring.add(rh.assemble());
+  ring.name = '__spin';
+
+  // four sponson arms, one per weapon slot, so the guns sit where they fire from
+  for (const [sx, sy, sz] of [[1, 1, 1], [-1, 1, 1], [1, -1, -1], [-1, -1, -1]]) {
+    h.box(3.0, 3.0, 3.0, M.dark, [sx * 8, sy * 3, sz * 5],
+      { scale: [2.6, 1, 1.6] });
+    h.box(6.0, 4.0, 7.0, M.plate, [sx * 16, sy * 6, sz * 10]);
+    h.box(4.2, 2.4, 4.6, M.hull, [sx * 16, sy * 8.6, sz * 10]);
+    h.box(0.6, 0.6, 0.6, M.window, [sx * 18.6, sy * 6, sz * 12]);
+  }
+
+  // solar wings on the unarmed axes, panelled into cells rather than left as
+  // one blank slab
+  h.pair(sd => {
+    h.box(1.1, 1.1, 1.1, M.dark, [sd * 14, 0, 0], { scale: [14, 1, 3] });
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 4; c++) {
+        h.box(0.26, 5.2, 4.6, M.trim, [sd * 30, (r - 0.5) * 5.9, (c - 1.5) * 5.4]);
+      }
+    }
+    h.box(0.5, 12.8, 0.9, M.dark, [sd * 30, 0, -11.2]);
+    h.box(0.5, 12.8, 0.9, M.dark, [sd * 30, 0, 11.2]);
+    h.box(0.5, 0.9, 22.4, M.dark, [sd * 30, 6.2, 0]);
+    h.box(0.5, 0.9, 22.4, M.dark, [sd * 30, -6.2, 0]);
+  });
+
+  // service traffic: docking cradles and a tender bay under the core
+  h.pair(sd => h.greebleRow(M.plate, {
+    x: sd * 7.6, y: -11, z0: -6, z1: 6, n: 4, w: 1.4, h: 1.6, d: 2.6
+  }));
+  h.box(6.0, 3.0, 9.0, M.plate, [0, -12.5, 0]);
+  h.windows(M.window, { x: 3.1, y: -12.5, z: 0, len: 7, count: 5 });
+
+  const plateX = addNamePlate(h, { x: 7.0, y: 13.0, z: 0, w: 8, h: 2.8 });
+  addMounts(h, def);
+  const group = h.assemble();
+  addDecalPanels(group, def, { x: plateX, y: 13.0, z: 0, w: 8, h: 2.8 });
+  const tilt = new THREE.Group();
+  tilt.rotation.x = -Math.PI / 2;          // ring's local Z becomes station +Y
+  tilt.add(ring);
+  group.add(tilt);
+  // a station keeps no drives: no plume, and no exhaust wake behind it
+  return { group, spin: [ring], engines: [], engineColor: ENGINE_COLOR.human };
+}
+
 // =============================================================== VESSARI ====
 //
 // Grown hulls: a segmented carapace spine, rib arches over a soft core,
@@ -676,6 +845,8 @@ function buildPrototype(def) {
     case 'dd_rapier':     return buildDestroyer(def, 'laser');
     case 'cr_bulwark':    return buildCruiser(def, 'shield');
     case 'cr_warhammer':  return buildCruiser(def, 'flag');
+    case 'tr_meridian':   return buildFreighter(def);
+    case 'st_anchorage':  return buildStation(def);
     case 'vx_stinger':    return buildVessari(def, 0);
     case 'vx_mantis':     return buildVessari(def, 1);
     case 'vx_lamprey':    return buildVessari(def, 1);
