@@ -419,6 +419,26 @@ function humanDetails(h, { len, wid, ht }) {
   h.box(0.5, 0.5, 0.5, M.glow, [-wid * 0.50, ht * 0.55, len * 0.30]);
 }
 
+/**
+ * A navigation light sunk into a socket: a dark rim standing proud of the hull
+ * face with the lens set back inside it. A bare emissive box reads as a slab
+ * stuck to the nose from every angle off the axis — a real running light only
+ * shows its colour when you are more or less looking down it, and shows a dark
+ * housing from the beam. The rim is a torus rather than a cylinder because a
+ * cylinder's front cap would simply cover the lens.
+ *
+ * @param {number} z  the hull face the light is mounted on; it recesses aft of it
+ */
+function addNavLight(h, { x = 0, y = 0, z, r = 0.85, mat = M.glow }) {
+  const t = r * 0.32;                                  // rim thickness
+  // The rim stands proud of the face and the lens sits back inside it. Both
+  // must be FORWARD of z: the hull face the light mounts on is a solid cap, so
+  // anything recessed behind it is simply hidden by the hull.
+  h.add(new THREE.TorusGeometry(r - t, t, 6, 12), M.dark, { pos: [x, y, z + t] });
+  h.cyl(r - t * 1.3, r - t * 1.3, t * 0.6, 12, mat, [x, y, z + t * 0.55],
+    { rot: [Math.PI / 2, 0, 0] });
+}
+
 function buildFalchion(def) {
   const h = new Hull();
   const spin = [];
@@ -426,8 +446,8 @@ function buildFalchion(def) {
   h.box(6.4, 5.2, 30, M.hull, [0, 0, 0]);
   h.box(7.6, 4.0, 8, M.plate, [0, 0.3, -1]);
   h.box(5.0, 3.4, 9, M.plate, [0, 0, 13], { rot: [0, 0, Math.PI / 4], scale: [0.85, 0.85, 1] });
-  h.cone(3.0, 7, 6, M.trim, [0, 0, 19], { rot: [Math.PI / 2, 0, 0] });      // ram bow
-  h.box(1.2, 1.2, 3.4, M.glow, [0, 0, 22]);                                  // bow lamp
+  h.cyl(1.1, 3.0, 7, 6, M.trim, [0, 0, 19], { rot: [Math.PI / 2, 0, 0] });   // ram bow
+  addNavLight(h, { z: 22.5, r: 0.9 });                                       // bow lamp
   // bridge block with lit windows
   h.box(4.6, 3.0, 5.6, M.plate, [0, 3.6, -3]);
   h.windows(M.window, { x: 0, y: 4.3, z: -3, len: 3.6, count: 4 });
@@ -484,8 +504,8 @@ function buildDestroyer(def, variant) {
   h.box(7.4, 6.0, L, M.hull, [0, 0, 0]);
   h.box(10.5, 3.4, L * 0.42, M.plate, [0, -1.4, 2]);              // belly armour
   h.box(5.2, 4.2, 12, M.plate, [0, 0.4, 15], { rot: [0, 0, Math.PI / 4], scale: [0.8, 0.8, 1] });
-  h.cone(2.6, 8, 6, M.trim, [0, 0, 23], { rot: [Math.PI / 2, 0, 0] });
-  h.box(1.0, 1.0, 3.0, M.glow, [0, 0, 26]);
+  h.cyl(0.95, 2.6, 8, 6, M.trim, [0, 0, 23], { rot: [Math.PI / 2, 0, 0] });
+  addNavLight(h, { z: 27, r: 0.8 });
   // superstructure + bridge windows
   h.box(5.4, 3.4, 9, M.plate, [0, 4.0, -4]);
   h.box(4.0, 2.2, 5, M.hull, [0, 6.4, -3]);
@@ -533,8 +553,8 @@ function buildCruiser(def, variant) {
   h.box(W * 1.5, 5.0, L * 0.5, M.plate, [0, -2.0, 0]);              // belly / hangar deck
   h.box(W * 0.8, 6.0, L * 0.30, M.plate, [0, 2.4, L * 0.22]);
   h.box(W * 0.55, 4.6, 14, M.plate, [0, 1.0, L * 0.42], { rot: [0, 0, Math.PI / 4], scale: [0.8, 0.8, 1] });
-  h.cone(3.4, 10, 6, M.trim, [0, 0, L * 0.55], { rot: [Math.PI / 2, 0, 0] });
-  h.box(1.6, 1.6, 4, M.glow, [0, 0, L * 0.60]);
+  h.cyl(1.3, 3.4, 10, 6, M.trim, [0, 0, L * 0.55], { rot: [Math.PI / 2, 0, 0] });
+  addNavLight(h, { z: L * 0.55 + 5, r: 1.05 });
   // island superstructure with several window decks
   h.box(7.2, 4.0, 16, M.plate, [0, 6.2, -4]);
   h.box(5.4, 3.0, 10, M.hull, [0, 9.4, -4]);
@@ -613,7 +633,7 @@ function buildFreighter(def) {
 
   // blunt bow fairing: a cap over the forward hopper, no ram, no armour
   h.cyl(2.6, 4.8, 7, 10, M.plate, [0, -1.0, L * 0.48], { rot: [Math.PI / 2, 0, 0] });
-  h.box(1.0, 1.0, 2.6, M.glow, [0, -1.0, L * 0.54]);
+  addNavLight(h, { y: -1.0, z: L * 0.48 + 3.5, r: 0.95 });
   h.pair(sd => h.box(0.9, 0.9, 4, M.dark, [sd * 3.4, 2.6, L * 0.42]));
 
   // crew deck aft, stacked on the keel — the only pressurised volume aboard
