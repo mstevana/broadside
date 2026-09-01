@@ -71,14 +71,21 @@ export function applyDocumentSettings() {
 
 // ====================================================== adaptive quality ====
 
+/** lowest rung of the quality ladder (see QualityGovernor.level) */
+const MAX_LEVEL = 4;
+
 export class QualityGovernor {
   /**
-   * @param {object} hooks { setBloom(on), setPixelRatio(r), setEffectBudget(n) }
+   * @param {object} hooks
+   *   { setMsaa(n), setBloom(on), setPixelRatio(r), setEffectBudget(n), setHeavyFx(on) }
    */
   constructor(hooks) {
     this.hooks = hooks;
     this.samples = [];
-    this.level = 0;           // 0 = full, 1 = no bloom, 2 = + lower DPR, 3 = + fewer effects
+    // 0 = everything, 1 = no MSAA, 2 = + no bloom, 3 = + lower resolution,
+    // 4 = + fewer effects. Multisampling sheds first because it is the one
+    // rung that costs nothing in legibility.
+    this.level = 0;
     this.cooldown = 3;
     this.enabled = settings.quality === 'auto';
     this.basePixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -88,15 +95,16 @@ export class QualityGovernor {
   applyManual() {
     this.enabled = settings.quality === 'auto';
     if (settings.quality === 'high') this._apply(0);
-    else if (settings.quality === 'low') this._apply(3);
+    else if (settings.quality === 'low') this._apply(MAX_LEVEL);
   }
 
   _apply(level) {
     this.level = level;
-    this.hooks.setBloom(level < 1);
-    this.hooks.setPixelRatio(level < 2 ? this.basePixelRatio : Math.min(1, this.basePixelRatio));
-    this.hooks.setEffectBudget(level < 3 ? 160 : 60);
-    this.hooks.setHeavyFx(level < 3);   // muzzle lights + exhaust wakes
+    this.hooks.setMsaa(level < 1 ? 4 : 0);
+    this.hooks.setBloom(level < 2);
+    this.hooks.setPixelRatio(level < 3 ? this.basePixelRatio : Math.min(1, this.basePixelRatio));
+    this.hooks.setEffectBudget(level < 4 ? 160 : 60);
+    this.hooks.setHeavyFx(level < 4);   // muzzle lights + exhaust wakes
   }
 
   /** call once per frame with the frame's duration in seconds */
@@ -113,7 +121,7 @@ export class QualityGovernor {
     if (this.cooldown > 0) return;
 
     // 22ms ≈ below 45fps: shed work. 13ms ≈ comfortably above 75fps: take it back.
-    if (med > 0.022 && this.level < 3) {
+    if (med > 0.022 && this.level < MAX_LEVEL) {
       this._apply(this.level + 1);
       this.cooldown = 4;
     } else if (med < 0.013 && this.level > 0) {

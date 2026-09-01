@@ -40,13 +40,15 @@ scene.add(makeStarfield());
 // threshold sits above lit hull plating (~0.6 luminance) so only genuinely
 // emissive things — drive flares, beams, windows, veins — actually glow
 const bloom = new BloomComposer(renderer, { strength: 0.7, threshold: 0.88 });
-bloom.setSize(window.innerWidth, window.innerHeight);
+bloom.setSize();
 
 // Adaptive quality: sheds bloom, then resolution, then effect density when
 // frames get long, so an older device degrades instead of stuttering.
 const quality = new QualityGovernor({
-  setBloom: (on) => bloom.setEnabled(on, window.innerWidth, window.innerHeight),
-  setPixelRatio: (r) => renderer.setPixelRatio(r),
+  setMsaa: (n) => { if (bloom.samples === n) return; bloom.samples = n; if (bloom.enabled) bloom.setSize(); },
+  setBloom: (on) => bloom.setEnabled(on),
+  // the drawing buffer just changed size, so the bloom targets must follow it
+  setPixelRatio: (r) => { renderer.setPixelRatio(r); if (bloom.enabled) bloom.setSize(); },
   setEffectBudget: (n) => { World.effectBudget = n; },
   setHeavyFx: (on) => { World.muzzleLights = on; World.exhaustTrails = on; }
 });
@@ -81,7 +83,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  if (bloom.enabled) bloom.setSize(window.innerWidth, window.innerHeight);
+  if (bloom.enabled) bloom.setSize();
 });
 
 // -------------------------------------------------------------- campaign ----

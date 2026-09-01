@@ -61,22 +61,24 @@ void main() {
   gl_FragColor = vec4(base + glow * strength, 1.0);
 }`;
 
-function target(w, h) {
+function target(w, h, { depth = false, samples = 0 } = {}) {
   return new THREE.WebGLRenderTarget(Math.max(2, w), Math.max(2, h), {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
     type: THREE.UnsignedByteType,
-    depthBuffer: false,
-    stencilBuffer: false
+    depthBuffer: depth,
+    stencilBuffer: false,
+    samples
   });
 }
 
 export class BloomComposer {
-  constructor(renderer, { strength = 0.9, threshold = 0.62, enabled = true } = {}) {
+  constructor(renderer, { strength = 0.9, threshold = 0.62, enabled = true, samples = 4 } = {}) {
     this.renderer = renderer;
     this.enabled = enabled;
     this.strength = strength;
+    this.samples = samples;      // MSAA on the scene target (WebGL2)
 
     this.quadScene = new THREE.Scene();
     this.quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -109,23 +111,36 @@ export class BloomComposer {
     this._size = new THREE.Vector2();
   }
 
-  setSize(w, h) {
+  /**
+   * Allocate at the renderer's DRAWING BUFFER size, not the CSS size: the
+   * scene target is what the whole frame is rendered into, so sizing it in CSS
+   * pixels renders everything at 1/devicePixelRatio and upscales it onto the
+   * canvas — the entire viewport goes soft and blocky on any retina display.
+   * Takes no dimensions precisely so no caller can pass the wrong ones.
+   */
+  setSize() {
     this.dispose();
     if (!this.enabled) return;
+    this.renderer.getDrawingBufferSize(this._size);
+    const w = this._size.x, h = this._size.y;
     const rt = (d) => ({ a: target(Math.round(w / d), Math.round(h / d)),
                          b: target(Math.round(w / d), Math.round(h / d)) });
     this.targets = {
-      scene: target(w, h),
+      // The scene target needs its own depth buffer. Without one the whole 3D
+      // pass runs with depth testing dead and resolves in draw order, so far
+      // geometry paints over near — hulls show their interiors and lights shine
+      // through the ship. It also carries the multisampling, since the default
+      // framebuffer's antialias only ever sees the composite quad.
+      scene: target(w, h, { depth: true, samples: this.samples }),
       half: rt(2),      // first bloom mip
       quarter: rt(4)    // second, wider mip
     };
-    this._size.set(w, h);
   }
 
-  setEnabled(on, w, h) {
+  setEnabled(on) {
     if (this.enabled === on) return;
     this.enabled = on;
-    if (on) this.setSize(w, h); else this.dispose();
+    if (on) this.setSize(); else this.dispose();
   }
 
   _blit(material, dest) {
@@ -153,9 +168,9 @@ export class BloomComposer {
     const t = this.targets;
     const w = this._size.x, h = this._size.y;
 
-    // 1. scene
+    // 1. scene, into a depth-backed target
     this.renderer.setRenderTarget(t.scene);
-    this.renderer.clear();
+    this.renderer.clear(true, true, false);
     this.renderer.render(scene, camera);
 
     // 2. bright pass into the half-res mip

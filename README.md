@@ -301,7 +301,8 @@ On the main menu, all persisted to `localStorage`:
 - **Graphics** — Auto / High / Low.
 
 **Adaptive quality.** In Auto, a governor watches median frame time and sheds
-work in stages — bloom first, then pixel ratio, then effect density — recovering
+work in stages — multisampling first (the one rung that costs nothing in
+legibility), then bloom, then pixel ratio, then effect density — recovering
 slowly when frames are comfortable again, so an older device degrades smoothly
 instead of stuttering.
 
@@ -349,6 +350,16 @@ lives in the addons we don't vendor. The threshold sits above lit hull plating,
 so only genuinely emissive things glow: drive flares, weapon tracers and beams,
 shield impacts, window strips and Vessari bioluminescence. It can be turned off
 wholesale (`bloom.setEnabled(false)`) with no targets allocated.
+
+Two properties of the scene target matter more than the glow itself, because
+with bloom on it *is* the frame. It is allocated at the renderer's drawing
+buffer size, never the CSS size — sizing it in CSS pixels renders the whole game
+at 1/devicePixelRatio and upscales it, which on any retina display is simply a
+blurry viewport. And it carries its own depth buffer and multisampling: without
+depth the 3D pass resolves in draw order and far geometry paints over near, and
+without samples the renderer's own `antialias` is inert, since the default
+framebuffer only ever receives the composite quad. `setSize()` deliberately
+takes no arguments so no caller can hand it the wrong ones.
 
 ## Procedural textures
 
