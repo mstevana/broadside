@@ -13,6 +13,34 @@ const _v3 = new THREE.Vector3();
 const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _muzzleV = new THREE.Vector3();
 
+/**
+ * A mount's firing arc is a CONE about its bore — Ship.inArc tests the full
+ * solid angle — but the tactical display is a horizontal slice through the
+ * ship. Intersecting the cone with that plane gives the half-width to draw:
+ *
+ *     cos(arc/2) = cos(elevation) · cos(halfWidth)
+ *
+ * so a bore tilted out of the plane covers LESS of it than arc/2, and one
+ * pointing steeply up or down can cover all of it. Drawing arc/2 flat, as this
+ * used to, put the wedge at the wrong width on every angled mount: the
+ * Warhammer's ventral shell gun bears 256° across the plane but was drawn at
+ * 220°, and the Bulwark's straight-down pulse array covers the whole circle
+ * but was drawn as a forward-facing wedge.
+ *
+ * @returns {number|null} half-width in radians, or null if the cone never
+ *                        reaches the horizontal plane at all
+ */
+function arcHalfWidth(dir, arcDeg) {
+  const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+  const cosE = Math.hypot(dir[0], dir[2]) / len;          // cos(elevation)
+  const cosH = Math.cos(THREE.MathUtils.degToRad(arcDeg / 2));
+  if (cosE < 1e-6) return cosH <= 0 ? Math.PI : null;     // bore straight up/down
+  const c = cosH / cosE;
+  if (c >= 1) return null;
+  if (c <= -1) return Math.PI;
+  return Math.acos(c);
+}
+
 /** compact device names for the floating combat text */
 const DEVICE_SHORT = { engines: 'ENGINES', shieldGen: 'SHIELD GEN', sensors: 'SENSORS' };
 
@@ -831,9 +859,12 @@ export class World {
       group.add(ring);
 
       let wedge = null, fill = null;
-      if (w.def.arc < 330) {
+      const half = arcHalfWidth(w.slot.dir, w.def.arc);
+      // >165° each side is all-round for practical purposes; null means the
+      // cone misses the plane entirely, so there is no wedge to draw
+      const sector = half !== null && half < Math.PI * 0.92;
+      if (sector) {
         const az = Math.atan2(w.slot.dir[0], w.slot.dir[2]);
-        const half = THREE.MathUtils.degToRad(w.def.arc / 2);
         const pts = [new THREE.Vector3(0, 0, 0)];
         for (let i = 0; i <= 24; i++) {
           const a = az - half + (i / 24) * 2 * half;
@@ -857,7 +888,9 @@ export class World {
         }
         shape.lineTo(0, 0);
         const geo = new THREE.ShapeGeometry(shape);
-        geo.rotateX(-Math.PI / 2);        // shape XY -> world XZ
+        // shape (X, Y) -> world (X, 0, Y). rotateX(-PI/2) sends Y to -Z, which
+        // mirrored the shaded sector fore-and-aft against its own outline.
+        geo.rotateX(Math.PI / 2);
         fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
           color: w.def.color, transparent: true, opacity: 0, side: THREE.DoubleSide,
           depthWrite: false
@@ -865,8 +898,8 @@ export class World {
         fill.renderOrder = 3;
         fill.visible = false;
         wedges.add(fill);
-      } else {
-        // 360° mounts get a disc instead of a sector
+      } else if (half !== null) {
+        // all-round in this plane: a disc instead of a sector
         const geo = new THREE.CircleGeometry(r, 48);
         geo.rotateX(-Math.PI / 2);
         fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({

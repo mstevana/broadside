@@ -89,6 +89,15 @@ subsystem hit underneath it.
 Move orders show a pulsing marker (with a plane-projection line for off-plane
 targets) until the ship arrives. The selected ship also draws its weapon range
 rings and firing-arc wedges, so you can see which mounts will actually bear.
+
+A mount's arc is a cone about its bore — `Ship.inArc` tests the full solid angle
+— while the display is a horizontal slice, so the wedge is drawn at the cone's
+intersection with that plane (`cos(arc/2) = cos(elevation)·cos(halfWidth)`)
+rather than at a flat `arc/2`. A bore angled out of the plane covers less of it
+than its nominal arc; one aimed steeply up or down covers all of it, and draws
+as a full disc. `tools/arccheck.js` sweeps the horizontal circle around every
+mount of every class, asks `inArc` itself which bearings are covered, and
+compares that against the span the display draws — 51/51 mounts agree.
 Hovering — or, on touch, holding — a weapon button lights that one mount's ring,
 shades the volume its arc covers and dims the rest, with the hard numbers in a
 readout above the bar; the ring answers "does this gun reach", the number
@@ -401,6 +410,7 @@ node tools/playtest.js 4              # 4 full campaigns, all five missions
 node tools/playtest.js 3 --mission 5  # just the finale
 node tools/playtest.js 2 --verbose    # per-mission fleet state
 node tools/playtest.js 2 --difficulty veteran
+node tools/arccheck.js                # firing-arc wedges vs what the sim allows
 ```
 
 `tools/bot.js` is a bot commander that plays the way a competent human would —
@@ -439,6 +449,7 @@ src/formation.js fleet formation slot layouts
 src/settings.js  persisted settings + adaptive quality governor
 tools/bot.js    bot commander used for automated balance playtesting
 tools/playtest.js  headless campaign playtest harness
+tools/arccheck.js  firing-arc visualisation check (drawn wedge vs Ship.inArc)
 sw.js           service worker (offline precache)
 manifest.webmanifest, icons/  PWA install metadata
 src/hud.js      combat DOM HUD

@@ -231,7 +231,9 @@ export const SHIP_CLASSES = {
     ],
     devices: { engines: 150, shieldGen: 130, sensors: 100 },
     traits: { deviceDmgMult: 1.35 }, cost: 200, unlockAfter: 1,
-    defaultLoadout: ['precision_laser', 'precision_laser', 'pulse_laser', 'pd_laser']
+    // the mirrored beam mounts carry the matching pair; the odd weapon goes on
+    // the bow centreline, so the ship's arcs read symmetrically
+    defaultLoadout: ['pulse_laser', 'precision_laser', 'precision_laser', 'pd_laser']
   },
   cr_bulwark: {
     id: 'cr_bulwark', name: 'Bulwark', className: 'Cruiser', faction: 'human',
