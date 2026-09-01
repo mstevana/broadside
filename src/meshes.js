@@ -442,10 +442,15 @@ function buildFalchion(def) {
   ringHull.add(new THREE.TorusGeometry(9.2, 1.5, 8, 24), M.hull, {});
   for (let i = 0; i < 8; i++) {                       // habitat modules + windows
     const a = (i / 8) * Math.PI * 2;
-    ringHull.box(2.4, 2.0, 1.8, M.plate, [Math.cos(a) * 9.2, Math.sin(a) * 9.2, 0],
-      { rot: [0, 0, a] });
-    ringHull.box(1.5, 0.5, 2.0, M.window, [Math.cos(a) * 9.2, Math.sin(a) * 9.2, 0.9],
-      { rot: [0, 0, a] });
+    const x = Math.cos(a) * 9.2, y = Math.sin(a) * 9.2;
+    ringHull.box(2.4, 2.0, 1.8, M.plate, [x, y, 0], { rot: [0, 0, a] });
+    // Window panels are set FLUSH into the module's two end faces (which sit at
+    // z = ±0.9) and are 0.3 deep, so no part of a lit box ever protrudes past
+    // the module. A box deep enough to poke out the far side stays visible from
+    // behind, which reads as the ring's lights shining through the hull.
+    for (const face of [1, -1]) {
+      ringHull.box(1.5, 0.5, 0.3, M.window, [x, y, face * 0.82], { rot: [0, 0, a] });
+    }
   }
   for (let i = 0; i < 4; i++) {                       // spokes
     const a = (i / 4) * Math.PI * 2;
@@ -683,7 +688,12 @@ function buildStation(def) {
     // as a run of separate sections rather than one smooth band
     rh.box(4.2, 2.9, 3.2, i % 4 === 0 ? M.trim : (i % 2 ? M.plate : M.dark),
       [x, y, 0], { rot: [0, 0, a] });
-    if (i % 2) rh.box(0.5, 0.5, 3.4, M.window, [x * 1.05, y * 1.05, 0], { rot: [0, 0, a] });
+    // rim lights sunk into the module's outer face rather than run through it,
+    // so a module on the far side of the ring cannot glow through the near one
+    if (i % 2) {
+      rh.box(0.3, 0.6, 2.2, M.window, [x * 1.077, y * 1.077, 0], { rot: [0, 0, a] });
+      rh.box(1.4, 0.5, 0.3, M.window, [x, y, 1.52], { rot: [0, 0, a] });
+    }
     if (i % 4 === 2) rh.box(0.8, 1.4, 0.8, M.dark, [x * 1.09, y * 1.09, 1.4], { rot: [0, 0, a] });
   }
   for (let k = 0; k < 4; k++) {

@@ -99,7 +99,7 @@ stern, hot and wide at the throat and thinning to nothing, its length driven by
 actual thrust rather than speed — so a hull under full burn is obvious from
 across the map and a drifting one shows a stub. Behind each nozzle its own
 exhaust wake streams away, widening and dimming as it disperses, one ribbon per
-engine per ship. A glance shows where a formation came from, which way a contact
+engine per ship, bright enough to read at the zoom the game is played at. A glance shows where a formation came from, which way a contact
 is drifting, and how hard it was pushing when it passed. Wakes keep drifting and
 fading after the ship that made them is gone. (Reduced motion, and the lowest
 quality tier, turn them off.)

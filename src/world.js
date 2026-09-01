@@ -1049,7 +1049,7 @@ export class World {
     }
     geo.setIndex(idx);
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+      vertexColors: true, transparent: true, opacity: 1, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, depthWrite: false
     }));
     mesh.frustumCulled = false;
@@ -1071,8 +1071,9 @@ export class World {
     const at = (i) => (head && i === n - 1 ? head : pts[i].p);
     const ageAt = (i) => (head && i === n - 1 ? 0 : pts[i].age);
     const thrAt = (i) => (head && i === n - 1 ? (pts.length ? pts[pts.length - 1].thr : 1) : pts[i].thr);
-    // the wake leaves the nozzle about as wide as the plume itself
-    const w0 = Math.max(0.8, size * 0.055);
+    // the wake leaves the nozzle a little wider than the plume itself, so it is
+    // still legible at the zoom the game is actually played at
+    const w0 = Math.max(1.2, size * 0.085);
     for (let i = 0; i < n; i++) {
       const p = at(i);
       // tangent from the neighbours, so the strip follows the curve of the wake
@@ -1091,7 +1092,7 @@ export class World {
       pos.setXYZ(j + 1, p.x, p.y, p.z);
       pos.setXYZ(j + 2, p.x + _v3.x, p.y + _v3.y, p.z + _v3.z);
       // dense and bright at the nozzle, gone by the far end
-      const f = Math.max(0, 1 - age) ** 2.2 * (0.05 + thrAt(i) * 0.20) * gain;
+      const f = Math.max(0, 1 - age) ** 1.45 * (0.11 + thrAt(i) * 0.40) * gain;
       col.setXYZ(j, 0, 0, 0);
       col.setXYZ(j + 1, color.r * f, color.g * f, color.b * f);
       col.setXYZ(j + 2, 0, 0, 0);
