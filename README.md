@@ -322,6 +322,11 @@ legibility), then bloom, then pixel ratio, then effect density — recovering
 slowly when frames are comfortable again, so an older device degrades smoothly
 instead of stuttering.
 
+The tutorial banner is sized to clear the fleet and hostile bars rather than
+overlap them: it carries no `pointer-events` exemption, so anything it covers it
+also swallows taps for — and one of its own steps tells the player to tap a
+hostile card.
+
 **Touch targets.** A viewport audit across iPhone SE / 13 / 15 Pro Max / iPad
 mini found the top-bar and order buttons were 27–29 px tall, well under the
 44 pt minimum. Each small control now carries an invisible 46 px hit area

@@ -280,7 +280,11 @@
   /* ---------- tutorial banner ---------- */
   #tutorial {
     position: absolute; left: 50%; transform: translateX(-50%);
-    bottom: calc(126px + var(--sab)); width: min(430px, 66vw);
+    bottom: calc(126px + var(--sab));
+    /* keep clear of the fleet and hostile bars: the banner has no
+       pointer-events exemption, so anything it overlaps it also swallows taps
+       for — and it points the player AT the hostile cards */
+    width: min(430px, max(240px, calc(100vw - 360px)));
     background: rgba(10,22,36,0.94); border: 1px solid var(--cyan-dim);
     border-radius: 10px; padding: 10px 12px; font-size: 11px; line-height: 1.5;
     color: var(--text); letter-spacing: 0.02em;

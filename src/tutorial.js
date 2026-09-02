@@ -21,7 +21,7 @@ const STEPS = [
   },
   {
     id: 'target',
-    text: 'Contact confirmed. TAP the enemy — in the world or in the hostile list on the right — to designate it as your target.',
+    text: 'Contact confirmed. Ships fire on what comes into range by themselves — TAP the enemy, or its card on the right, to focus the selection on one hull.',
     done: (m) => m.selection.some(s => s.target && s.target.alive)
   },
   {
@@ -34,7 +34,7 @@ const STEPS = [
   },
   {
     id: 'hull',
-    text: 'SHIELD DOWN. Now the RAILGUN bites. Tap a weapon to hold fire, LONG-PRESS to bind it to this target.',
+    text: 'SHIELD DOWN. Now the RAILGUN bites. Tap a weapon to hold fire across the selection, LONG-PRESS to bind it to this target.',
     done: (m) => m.world.ships.some(s => !s.isPlayer && !s.alive)
   },
   {
