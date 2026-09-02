@@ -30,6 +30,9 @@ export class HUD {
     this._energySig = null;
     this._toastTimer = null;
 
+    // SELECT ALL is markup, not rebuilt with the card list, so its handler is
+    // wired once and can never be torn out from under a tap in progress
+    $('btn-selall').addEventListener('click', () => cb.onSelectShip(null));
     $('btn-pause').addEventListener('click', () => cb.onPause());
     // Keyboard: space pauses. Swallowed before the browser can scroll the page
     // or re-fire whichever HUD button happens to hold focus.
@@ -118,7 +121,7 @@ export class HUD {
   }
 
   buildShipBar() {
-    const bar = $('shipbar');
+    const bar = $('shipcards');
     bar.innerHTML = '';
     this._shipCards.clear();
     const world = this.cb.getWorld();
@@ -144,11 +147,6 @@ export class HUD {
         beh: card.querySelector('.beh')
       });
     }
-    const all = document.createElement('button');
-    all.id = 'btn-selall';
-    all.textContent = 'SELECT ALL';
-    all.addEventListener('click', () => this.cb.onSelectShip(null));
-    bar.appendChild(all);
   }
 
   refreshBehavior() {
@@ -291,7 +289,7 @@ export class HUD {
   }
 
   buildEnemyBar() {
-    const bar = $('enemybar');
+    const bar = $('enemycards');
     const world = this.cb.getWorld();
     bar.innerHTML = '';
     this._enemyCards = [];

@@ -345,6 +345,24 @@ and hostile bars goes from 530 px to 648 px. The cost is that on the side that
 both modes — that one is the home-indicator gesture strip, and a button under it
 gets a swipe-to-switch-app instead of a tap.
 
+**Reachability.** A control can be on screen, unclipped, at a full 44 pt and
+still be untappable, because something transparent is on top of it. The top and
+bottom bars span the full width, so on a short landscape phone their empty
+stretches lay over the ends of the side lists and swallowed the taps — SELECT
+ALL among them. Both bars are now transparent to input with only their controls
+taking it, and the side lists are anchored *between* the bars rather than
+centred on the viewport and running under them. `tools/hittest.js` walks every
+HUD control at four viewports, finds the centre of the part actually visible
+inside whatever scroll box clips it, and asks the document what is on top there;
+anything but the control itself fails the run.
+
+Both side lists also pin their furniture outside the scroller: SELECT ALL sits
+below the fleet cards rather than after them, since a four-ship fleet plus an
+allied hull pushed it out of the scroll box entirely. The hostile list scrolls
+in an inner element for a subtler reason — a flex container that both centres
+its content and scrolls makes the *leading* overflow unreachable, so the top of
+a long contact list could never be scrolled back to.
+
 **Touch targets.** A viewport audit across iPhone SE / 13 / 15 Pro Max / iPad
 mini found the top-bar and order buttons were 27–29 px tall, well under the
 44 pt minimum. Each small control now carries an invisible 46 px hit area
@@ -441,6 +459,7 @@ node tools/playtest.js 3 --mission 5  # just the finale
 node tools/playtest.js 2 --verbose    # per-mission fleet state
 node tools/playtest.js 2 --difficulty veteran
 node tools/arccheck.js                # firing-arc wedges vs what the sim allows
+node tools/hittest.js                 # every HUD control tappable at four viewports
 ```
 
 `tools/bot.js` is a bot commander that plays the way a competent human would —
@@ -480,6 +499,7 @@ src/settings.js  persisted settings + adaptive quality governor
 tools/bot.js    bot commander used for automated balance playtesting
 tools/playtest.js  headless campaign playtest harness
 tools/arccheck.js  firing-arc visualisation check (drawn wedge vs Ship.inArc)
+tools/hittest.js   HUD reachability check (is each control topmost at its centre)
 sw.js           service worker (offline precache)
 manifest.webmanifest, icons/  PWA install metadata
 src/hud.js      combat DOM HUD
