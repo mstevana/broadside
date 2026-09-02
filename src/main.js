@@ -1030,6 +1030,10 @@ function buildAllOptions() {
     { value: false, label: 'FULL' }, { value: true, label: 'REDUCED' }
   ], () => settings.reducedMotion, (v) => setSetting('reducedMotion', v));
 
+  buildOptions('opt-hudmargin', [
+    { value: 'safe', label: 'SAFE' }, { value: 'edge', label: 'EDGE' }
+  ], () => settings.hudMargin, (v) => { setSetting('hudMargin', v); applyDocumentSettings(); });
+
   buildOptions('opt-quality', [
     { value: 'auto', label: 'AUTO' }, { value: 'high', label: 'HIGH' }, { value: 'low', label: 'LOW' }
   ], () => settings.quality, (v) => { setSetting('quality', v); quality.applyManual(); });

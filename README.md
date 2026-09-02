@@ -314,6 +314,7 @@ On the main menu, all persisted to `localStorage`:
 - **Text size** — scales HUD type *and* its touch targets together, so larger
   text doesn't just crowd the controls.
 - **Motion** — drops UI transitions (also honours `prefers-reduced-motion`).
+- **HUD margins** — Safe / Edge.
 - **Graphics** — Auto / High / Low.
 
 **Adaptive quality.** In Auto, a governor watches median frame time and sheds
@@ -326,6 +327,17 @@ The tutorial banner is sized to clear the fleet and hostile bars rather than
 overlap them: it carries no `pointer-events` exemption, so anything it covers it
 also swallows taps for — and one of its own steps tells the player to tap a
 hostile card.
+
+**HUD margins.** A phone held sideways reserves a notch-sized strip on *both*
+long edges — iOS mirrors `safe-area-inset-left/right` so that rotating does not
+reflow the page — which means roughly 59 CSS px is held back on the side that
+has no notch. SAFE honours both, which is correct and wastes that strip. EDGE
+zeroes the horizontal inset and hands it to the viewport: measured on a 932×430
+landscape viewport with the real iOS insets, the clear span between the fleet
+and hostile bars goes from 530 px to 648 px. The cost is that on the side that
+*does* have the notch, a card runs under it. The bottom inset is honoured in
+both modes — that one is the home-indicator gesture strip, and a button under it
+gets a swipe-to-switch-app instead of a tap.
 
 **Touch targets.** A viewport audit across iPhone SE / 13 / 15 Pro Max / iPad
 mini found the top-bar and order buttons were 27–29 px tall, well under the

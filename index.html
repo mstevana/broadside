@@ -29,6 +29,14 @@
     --sab: env(safe-area-inset-bottom, 0px);
     --sal: env(safe-area-inset-left, 0px);
     --sar: env(safe-area-inset-right, 0px);
+    /* What the HUD actually insets by. iOS mirrors the landscape notch inset
+       onto BOTH edges, so on a phone about 59px of one side is being held back
+       for a notch that is not on it. EDGE margins spend that on the viewport
+       instead — see html.hud-edge. */
+    --hl: var(--sal);
+    --hr: var(--sar);
+    --ht: var(--sat);
+    --hb: var(--sab);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -60,9 +68,9 @@
   #hud > * { pointer-events: auto; }
 
   #topbar {
-    position: absolute; top: var(--sat); left: 0; right: 0;
+    position: absolute; top: var(--ht); left: 0; right: 0;
     display: flex; align-items: center; gap: 8px;
-    padding: 6px calc(10px + var(--sar)) 6px calc(10px + var(--sal));
+    padding: 3px calc(3px + var(--hr)) 3px calc(3px + var(--hl));
     font-size: 12px;
   }
   #topbar .obj {
@@ -78,7 +86,7 @@
 
   /* ---------- ship list (left) ---------- */
   #shipbar {
-    position: absolute; left: calc(6px + var(--sal)); top: 50%;
+    position: absolute; left: calc(3px + var(--hl)); top: 50%;
     transform: translateY(-50%);
     display: flex; flex-direction: column; gap: 6px; max-height: 70%;
     overflow-y: auto; width: 142px;
@@ -105,7 +113,7 @@
   /* ---------- bottom bar: weapons + orders ---------- */
   #bottombar {
     position: absolute; left: 0; right: 0; bottom: 0;
-    padding: 6px calc(8px + var(--sar)) calc(8px + var(--sab)) calc(8px + var(--sal));
+    padding: 4px calc(3px + var(--hr)) calc(3px + var(--hb)) calc(3px + var(--hl));
     display: flex; flex-direction: column; gap: 6px;
   }
   #orders-row { display: flex; gap: 6px; justify-content: center; }
@@ -172,7 +180,7 @@
   /* ---------- target panel (right) ---------- */
   /* ---------- hostile order of battle (right) ---------- */
   #enemybar {
-    position: absolute; right: calc(6px + var(--sar)); top: 50%;
+    position: absolute; right: calc(3px + var(--hr)); top: 50%;
     transform: translateY(-50%);
     display: flex; flex-direction: column; gap: 6px; max-height: 70%;
     overflow-y: auto; width: 164px; align-items: stretch;
@@ -412,11 +420,23 @@
   #btn-selall::after { content: none; }
 
   /* short landscape phones: trim the weapon bar so the viewport stays usable */
+  @media (max-height: 460px) {
+    /* a phone held sideways: every millimetre of the middle is the game */
+    #topbar { gap: 5px; }
+    .tb-btn { padding: 7px 10px; }
+    #bottombar { gap: 4px; }
+    #orders-row { gap: 5px; }
+    .ord-btn { padding: 7px 9px; }
+    .ship-card, .enemy-card { padding: 5px 7px 6px; }
+    #shipbar, #enemybar { gap: 4px; max-height: 74%; }
+    #shipbar { width: 128px; }
+    #enemybar { width: 150px; }
+  }
   @media (max-height: 360px) {
     .wpn-btn { width: 72px; min-width: 72px; height: 60px; }
     .wpn-btn .nm { font-size: 10px; }
     #bottombar { gap: 4px; padding-top: 4px; }
-    #shipbar { max-height: 60%; width: 130px; }
+    #shipbar { max-height: 60%; width: 122px; }
   }
 
   /* ---------- settings options ---------- */
@@ -428,6 +448,16 @@
     background: rgba(53,200,255,0.03);
   }
   .opt-btn.on { border-color: var(--cyan); color: var(--cyan); background: rgba(53,200,255,0.14); }
+
+  /* EDGE margins: pull the HUD out to the bezel and hand the reclaimed strip
+     back to the viewport. On a notched phone in landscape this recovers the
+     mirrored inset on the side that has no notch, at the cost of the bar on
+     the side that does running under it. */
+
+  /* Horizontal only. The bottom inset is the home-indicator gesture strip, not
+     a mirrored notch: buttons under it get swipe-to-switch-app instead of a
+     tap, so that one stays honoured either way. */
+  html.hud-edge { --hl: 0px; --hr: 0px; }
 
   /* ---------- accessibility ---------- */
   /* Larger text scales the HUD's type and its touch targets together, so the
@@ -547,9 +577,12 @@
       <div class="opt-row" id="opt-text"></div>
       <div class="opt-label" style="margin-top:10px">MOTION</div>
       <div class="opt-row" id="opt-motion"></div>
+      <div class="opt-label" style="margin-top:10px">HUD MARGINS</div>
+      <div class="opt-row" id="opt-hudmargin"></div>
+      <p class="dim" style="font-size:9px;margin-top:6px">EDGE pushes the HUD out to the left and right bezels for a wider view. A phone held sideways reserves a notch-sized strip on <i>both</i> edges; EDGE reclaims it, so on the side that has the notch a card may run under it. The bottom gesture strip is left alone either way.</p>
       <div class="opt-label" style="margin-top:10px">GRAPHICS</div>
       <div class="opt-row" id="opt-quality"></div>
-      <p class="dim" style="font-size:9px;margin-top:6px">AUTO sheds bloom, then resolution, then effect density if frames get long.</p>
+      <p class="dim" style="font-size:9px;margin-top:6px">AUTO sheds multisampling, then bloom, then resolution, then effect density if frames get long.</p>
     </div>
     <div id="howto" class="panel-box hidden" style="margin-top:20px">
       <h3>CONTROLS</h3>

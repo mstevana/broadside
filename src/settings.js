@@ -18,7 +18,8 @@ const DEFAULTS = {
   largeText: false,
   reducedMotion: false,
   difficulty: 'officer',  // recruit | officer | veteran
-  quality: 'auto'         // auto | high | low
+  quality: 'auto',        // auto | high | low
+  hudMargin: 'safe'       // safe | edge — how far the HUD sits from the bezel
 };
 
 export const DIFFICULTY = {
@@ -66,6 +67,7 @@ export function applyDocumentSettings() {
   const r = document.documentElement;
   r.classList.toggle('large-text', !!settings.largeText);
   r.classList.toggle('reduced-motion', !!settings.reducedMotion);
+  r.classList.toggle('hud-edge', settings.hudMargin === 'edge');
   r.dataset.cues = settings.colorMode;
 }
 
