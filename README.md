@@ -54,6 +54,12 @@ first ship in the selection, but they drive the matching mount on every hull
 that carries one — hold fire on RAIL with three cruisers selected and three
 railguns go quiet.
 
+The power panel says so on its face: it is titled `POWER — 3 SHIPS` when more
+than one is selected, and a channel the selected hulls disagree on shows its
+value in amber with a `~`, since the slider can only sit at one position. Moving
+it brings them all into line. The reserve cell and reactor load underneath are
+one hull's, so that row names the hull whenever the selection is larger.
+
 The **left bar** is your order of battle: commanded hulls (tap to select) plus
 any allied convoys or installations the mission gives you, shown dashed and
 green — an escort mission is unplayable if you cannot see the thing you are

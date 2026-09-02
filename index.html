@@ -260,6 +260,9 @@
     padding: 10px 12px; font-size: 11px;
   }
   #energypanel h4 { font-size: 11px; letter-spacing: 0.12em; color: var(--cyan); margin-bottom: 8px; font-weight: 600; }
+  /* a channel the selected ships do not agree on: the slider shows the first
+     hull's value, and moving it will bring the rest into line */
+  .eslider output.mixed { color: var(--amber); }
   .eslider { display: grid; grid-template-columns: 52px 1fr 30px; align-items: center; gap: 6px; margin-bottom: 7px; }
   .eslider label { color: var(--text-dim); font-size: 10px; letter-spacing: 0.06em; }
   .eslider output { font-size: 10px; color: var(--text); text-align: right; }
@@ -508,7 +511,7 @@
     <div class="eslider"><label>SHIELDS</label><input type="range" id="es-shd" min="0" max="200" value="100"><output id="eo-shd">1.0</output></div>
     <div class="eslider"><label>ENGINES</label><input type="range" id="es-eng" min="0" max="200" value="100"><output id="eo-eng">1.0</output></div>
     <div class="eslider"><label>SENSORS</label><input type="range" id="es-sen" min="0" max="200" value="100"><output id="eo-sen">1.0</output></div>
-    <div class="lbl" style="display:flex;justify-content:space-between;font-size:8px;color:var(--text-dim)"><span>RESERVE CELL</span><span id="ep-reserve-v"></span></div>
+    <div class="lbl" style="display:flex;justify-content:space-between;gap:8px;font-size:9px;color:var(--text-dim)"><span id="ep-reserve-label">RESERVE CELL</span><span id="ep-reserve-v"></span></div>
     <div class="bar energy" id="ep-reserve"><i></i></div>
     <div id="ep-load"></div>
   </div>

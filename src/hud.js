@@ -9,6 +9,7 @@ const $ = (id) => document.getElementById(id);
 
 const BEHAVIOR_CYCLE = ['focused', 'aggressive', 'defensive'];
 const BEHAVIOR_LABEL = { focused: 'FOCUSED', aggressive: 'AGGRESSIVE', defensive: 'DEFENSIVE' };
+const KEYS = ['wep', 'shd', 'eng', 'sen'];       // reactor allocation channels
 
 export class HUD {
   /**
@@ -26,7 +27,7 @@ export class HUD {
     this._weaponBtns = [];
     this._weaponsOf = null;      // ship the weapon bar is built for
     this._targetOf = null;
-    this._energyOf = null;
+    this._energySig = null;
     this._toastTimer = null;
 
     $('btn-pause').addEventListener('click', () => cb.onPause());
@@ -61,10 +62,10 @@ export class HUD {
     });
     $('btn-energy').addEventListener('click', () => {
       $('energypanel').classList.toggle('hidden');
-      this._energyOf = null;   // force resync
+      this._energySig = null;   // force resync
     });
 
-    for (const k of ['wep', 'shd', 'eng', 'sen']) {
+    for (const k of KEYS) {
       $('es-' + k).addEventListener('input', (e) => {
         if (!cb.getPrimary()) return;
         cb.onEnergy(k, e.target.value / 100);      // every selected hull
@@ -481,7 +482,7 @@ export class HUD {
     if (prim !== this._weaponsOf) {
       this.buildWeaponBar(prim);
       this.refreshBehavior();
-      this._energyOf = null;
+      this._energySig = null;
     }
     for (const wb of this._weaponBtns) {
       const w = wb.w;
@@ -508,19 +509,30 @@ export class HUD {
       if (wb.bind.textContent !== bindText) wb.bind.textContent = bindText;
     }
 
-    // energy panel
+    // energy panel. The sliders drive every selected hull, so the panel has to
+    // say so: titled with the whole selection, and any channel the ships do not
+    // agree on is flagged rather than quietly showing the first one's value.
     const ep = $('energypanel');
     if (!ep.classList.contains('hidden') && prim) {
-      if (this._energyOf !== prim) {
-        this._energyOf = prim;
-        $('ep-title').textContent = `POWER — ${prim.name}`;
-        for (const k of ['wep', 'shd', 'eng', 'sen']) {
+      const crew = sel.filter(s => s.alive && s.controllable);
+      const sig = crew.map(s => s.id + ':' + KEYS.map(k => s.sliders[k].toFixed(2)).join()).join('|');
+      if (this._energySig !== sig) {
+        this._energySig = sig;
+        $('ep-title').textContent = crew.length > 1
+          ? `POWER — ${crew.length} SHIPS` : `POWER — ${prim.name}`;
+        for (const k of KEYS) {
+          const mixed = crew.some(s => Math.abs(s.sliders[k] - prim.sliders[k]) > 0.005);
           $('es-' + k).value = Math.round(prim.sliders[k] * 100);
-          $('eo-' + k).textContent = prim.sliders[k].toFixed(1);
+          $('eo-' + k).textContent = mixed ? '~' + prim.sliders[k].toFixed(1) : prim.sliders[k].toFixed(1);
+          $('eo-' + k).classList.toggle('mixed', mixed);
         }
       }
+      // the reserve cell is one hull's, so name the hull whenever it is not
+      // obvious which one the numbers belong to
       const resFrac = prim.reserve / prim.def.reserve;
       $('ep-reserve').querySelector('i').style.transform = `scaleX(${resFrac.toFixed(3)})`;
+      $('ep-reserve-label').textContent =
+        crew.length > 1 ? `RESERVE CELL — ${prim.name}` : 'RESERVE CELL';
       $('ep-reserve-v').textContent = `${Math.round(prim.reserve)} / ${prim.def.reserve}`;
       $('ep-load').textContent =
         `REACTOR ${prim.def.reactor}/s — WPN ${prim.shares.wep.toFixed(1)} · SHD ${prim.shares.shd.toFixed(1)} · ENG ${prim.shares.eng.toFixed(1)} · SEN ${prim.shares.sen.toFixed(1)}`;
