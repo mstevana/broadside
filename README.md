@@ -225,7 +225,11 @@ throws no plume and lays no wake. The Vessari Bastion gun-spire and the inert
 Tomb-Hulk derelicts are grown, not built. Allied hulls are human-faction (so the Shoal shoots them and they
 shoot back) but are not player-commanded — `controllable` separates the two. After each
 mission you get resource points for repairs, weapons and new hulls — **unspent
-points are lost at launch**. Secondary objectives pay extra points and XP. XP
+points are lost at launch**. The fleet caps at four berths, so a hull can be
+**decommissioned** to make room: it returns half what it cost and its whole
+loadout goes to stores, since losing the guns as well would be a harsher trade
+than the cap is there to impose. It is confirmed first and cannot be undone, and
+the last hull can never be paid off. Secondary objectives pay extra points and XP. XP
 levels grant commander attribute points: **Combat** (+damage), **Engineering**
 (+points per mission), **Science** (+sensor range, +device-hit accuracy). Losing
 a mission restores the fleet to its pre-launch state; losing a ship on a *won*

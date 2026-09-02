@@ -392,6 +392,9 @@
     font-size: 10px; letter-spacing: 0.06em; background: rgba(255,181,69,0.06);
   }
   .fix-btn:disabled { opacity: 0.3; }
+  /* destructive: paying off a hull cannot be undone */
+  .fix-btn.danger { color: var(--red); border-color: rgba(255,82,82,0.45); }
+  .fix-btn.danger:disabled { color: var(--text-dim); border-color: var(--line); }
   .shop-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .attr-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .attr-row .desc { flex: 1; color: var(--text-dim); font-size: 10px; }

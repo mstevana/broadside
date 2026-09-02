@@ -1,6 +1,6 @@
 // BROADSIDE — offline cache. Everything the game needs is local, so a single
 // precache makes it fully playable with no network.
-const CACHE = 'broadside-v16';
+const CACHE = 'broadside-v17';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './vendor/three.module.min.js',

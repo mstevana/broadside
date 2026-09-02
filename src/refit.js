@@ -184,6 +184,11 @@ export function renderRefit(campaign, cb /* { onLaunch, onMenu, onSave } */) {
         h += `<button class="fix-btn" data-act="dev" data-dev="${dk}" ${campaign.points < REPAIR.deviceRestoreCost ? 'disabled' : ''}>REBUILD ${dk === 'shieldGen' ? 'SHIELD GEN' : dk.toUpperCase()} — ${REPAIR.deviceRestoreCost} pts</button>`;
       }
     }
+    const last = campaign.fleet.length <= 1;
+    h += `<button class="fix-btn danger" data-act="scrap" ${last ? 'disabled' : ''}>`
+      + (last ? 'LAST HULL — CANNOT DECOMMISSION'
+              : `DECOMMISSION${scrapValue(rec) ? ` — +${scrapValue(rec)} pts` : ''}`)
+      + `</button>`;
     h += `</div><div class="slot-row">`;
     rec.slots.forEach((slot, i) => {
       const w = slot.w ? WEAPONS[slot.w] : null;
@@ -211,6 +216,10 @@ export function renderRefit(campaign, cb /* { onLaunch, onMenu, onSave } */) {
         redraw();
       });
     });
+    const scrapBtn = box.querySelector('[data-act="scrap"]');
+    if (scrapBtn && !scrapBtn.disabled) {
+      scrapBtn.addEventListener('click', () => openDecommissionModal(campaign, shipIdx, cb, redraw));
+    }
     box.querySelectorAll('[data-slot]').forEach(btn => {
       btn.addEventListener('click', () => openSlotModal(campaign, rec, parseInt(btn.dataset.slot, 10), cb, redraw));
     });
@@ -229,7 +238,7 @@ export function renderRefit(campaign, cb /* { onLaunch, onMenu, onSave } */) {
     btn.disabled = locked || full || campaign.points < def.cost;
     btn.innerHTML = `<div class="hd2"><span>${def.name} — ${def.className}</span><span class="cost">${def.cost} pts</span></div>`
       + `<div class="d">${def.role}. ${def.desc}${locked ? ` <b style="color:var(--red)">LOCKED — complete mission ${def.unlockAfter + 1}</b>` : ''}`
-      + `${full ? ' <b style="color:var(--amber)">FLEET FULL</b>' : ''}</div>`;
+      + `${full ? ` <b style="color:var(--amber)">FLEET FULL (${MAX_FLEET}) — decommission a hull to free a berth</b>` : ''}</div>`;
     btn.addEventListener('click', () => {
       if (!spend(def.cost)) return;
       const used = new Set(campaign.fleet.map(r => r.name));
@@ -242,6 +251,55 @@ export function renderRefit(campaign, cb /* { onLaunch, onMenu, onSave } */) {
 
   $('btn-refit-launch').onclick = cb.onLaunch;
   $('btn-refit-menu').onclick = cb.onMenu;
+}
+
+// -------------------------------------------------------- decommission ----
+
+/** points back for paying off a hull — the guns come off it separately */
+const SCRAP_FRACTION = 0.5;
+
+function scrapValue(rec) {
+  const def = SHIP_CLASSES[rec.cls];
+  return Math.floor((def.cost || 0) * SCRAP_FRACTION);
+}
+
+/**
+ * Pay a hull off to free a berth. Its weapons go to stores rather than being
+ * sold — that is what unmounting one already does, and losing a full loadout
+ * to make room for a new hull would be a worse trade than the fleet cap is
+ * meant to impose. Confirmed first: it cannot be undone and the refund is
+ * deliberately less than the hull cost.
+ */
+function openDecommissionModal(campaign, shipIdx, cb, redraw) {
+  const rec = campaign.fleet[shipIdx];
+  const def = SHIP_CLASSES[rec.cls];
+  const back = scrapValue(rec);
+  const guns = rec.slots.map(sl => sl.w).filter(Boolean);
+  let h = `<h3>DECOMMISSION ${rec.name}</h3>`;
+  h += `<p class="d" style="font-size:10px;margin-bottom:8px">`
+    + `${def.className} — ${def.role}. The hull is struck from the registry and the berth freed. `
+    + `This cannot be undone.</p>`;
+  h += `<div class="attr-row"><b>Scrap value</b><span class="desc">`
+    + (back ? `+${back} pts — half what the hull cost` : 'no refund — this hull was issued, not bought')
+    + `</span></div>`;
+  h += `<div class="attr-row"><b>Weapons</b><span class="desc">`
+    + (guns.length
+      ? `${guns.map(g => WEAPONS[g].short).join(', ')} — returned to stores`
+      : 'none fitted') + `</span></div>`;
+  h += `<div class="slot-row" style="margin-top:12px">`
+    + `<button class="fix-btn danger" data-scrap>DECOMMISSION${back ? ` — +${back} pts` : ''}</button>`
+    + `<button class="fix-btn" data-cancel>KEEP THE SHIP</button></div>`;
+  openModal(h);
+
+  const sheet = $('modal-sheet');
+  sheet.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  sheet.querySelector('[data-scrap]').addEventListener('click', () => {
+    if (campaign.fleet.length <= 1) { closeModal(); return; }   // never the last hull
+    for (const sl of rec.slots) if (sl.w) { campaign.inventory.push(sl.w); sl.w = null; }
+    campaign.fleet.splice(shipIdx, 1);
+    campaign.points += back;
+    cb.onSave(); closeModal(); redraw();
+  });
 }
 
 // ------------------------------------------------------------ slot modal ----
