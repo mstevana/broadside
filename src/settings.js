@@ -35,9 +35,9 @@ export const DIFFICULTY = {
 // is the pairing most protan/deutan viewers lose first; the alternates move the
 // hostile cue to a hue that survives.
 export const CUE_PALETTES = {
-  default: { own: 0x35c8ff, target: 0xff5252, ally: 0x4dd47a, waypoint: 0x4dd47a },
-  deuter:  { own: 0x35c8ff, target: 0xffb020, ally: 0xffffff, waypoint: 0x9ad8ff },
-  trit:    { own: 0x00d0a0, target: 0xff4fa0, ally: 0xffd24d, waypoint: 0x00d0a0 }
+  default: { own: 0x35c8ff, target: 0xff5252, ally: 0x4dd47a, waypoint: 0x4dd47a, objective: 0xffb545 },
+  deuter:  { own: 0x35c8ff, target: 0xffb020, ally: 0xffffff, waypoint: 0x9ad8ff, objective: 0xffffff },
+  trit:    { own: 0x00d0a0, target: 0xff4fa0, ally: 0xffd24d, waypoint: 0x00d0a0, objective: 0xffd24d }
 };
 
 function load() {

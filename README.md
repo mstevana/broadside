@@ -99,6 +99,12 @@ name the device (`ENGINES −12`), hull damage is amber, shield drain and
 draws at its own height, so a volley of hull numbers can never bury the
 subsystem hit underneath it.
 
+Charted mission objectives — the tomb-hulks of DEAD RECKONING, say — carry a
+standing amber mark using the same ring and altitude stalk as a move order, and
+stay on sensors regardless of range: fleet gave you their bearings, which is
+what the mission's name means. Only the *hostiles* are hidden by the blackout.
+A mark retires as its wreck is secured.
+
 Move orders show a pulsing marker (with a plane-projection line for off-plane
 targets) until the ship arrives. The selected ship also draws its weapon range
 rings and firing-arc wedges, so you can see which mounts will actually bear.

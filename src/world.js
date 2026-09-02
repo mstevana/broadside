@@ -104,7 +104,8 @@ export class World {
     this.time = 0;
     this.enemyDmgMult = 1;      // difficulty
     this.enemyRegenMult = 1;
-    this.cue = { own: 0x35c8ff, target: 0xff5252, ally: 0x4dd47a, waypoint: 0x4dd47a };
+    this.cue = { own: 0x35c8ff, target: 0xff5252, ally: 0x4dd47a, waypoint: 0x4dd47a,
+                 objective: 0xffb545 };
 
     this.onMessage = null;        // (text) => void  — HUD toast
     this.onShipKilled = null;     // (ship, killer) => void
@@ -158,6 +159,11 @@ export class World {
     this.cue = palette;
     if (this._targetRing) this._targetRing.material.color.setHex(palette.target);
     for (const ring of this._selRings.values()) ring.material.uniforms.uColor.value.setHex(palette.own);
+    for (const mk of (this._objMarks || new Map()).values()) {
+      for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) {
+        part.material.color.setHex(palette.objective);
+      }
+    }
     for (const mk of this._moveMarkers.values()) {
       for (const part of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) {
         part.material.color.setHex(palette.waypoint);
@@ -954,6 +960,29 @@ export class World {
 
   setTargetMarker(ship) { this._targetShip = ship || null; }
 
+  /**
+   * Standing marks on mission objectives — the same ring + altitude stalk the
+   * move order uses, so the vocabulary is one the player already reads. Being
+   * charted is not the same as being findable: three wrecks scattered across
+   * 3km of murk need something visible from outside sensor range.
+   */
+  setObjectiveMarks(ships) {
+    if (!this._objMarks) this._objMarks = new Map();
+    const keep = new Set(ships.map(s => s.id));
+    for (const [id, mk] of this._objMarks) {
+      if (keep.has(id)) continue;
+      for (const p of [mk.ring, mk.line, mk.vline, mk.planeRing, mk.diamond]) this.markerGroup.remove(p);
+      this._objMarks.delete(id);
+    }
+    for (const s of ships) {
+      if (!this._objMarks.has(s.id)) {
+        const mk = this._makeMoveMarker(this.cue.objective, 0.8);
+        mk.line.visible = false;              // no ship-to-point leg: it is not an order
+        this._objMarks.set(s.id, mk);
+      }
+    }
+  }
+
   clearMarkersFor(ship) {
     const ring = this._selRings.get(ship.id);
     if (ring) { this.markerGroup.remove(ring); this._selRings.delete(ship.id); }
@@ -1192,6 +1221,25 @@ export class World {
         }
       }
     }
+    // standing objective marks
+    if (this._objMarks) {
+      for (const [id, mk] of this._objMarks) {
+        const s = this.ships.find(x => x.id === id);
+        if (!s || !s.alive) { this._setMarkerVisible(mk, false); continue; }
+        this._setMarkerVisible(mk, true);
+        mk.line.visible = false;
+        mk.diamond.position.copy(s.pos);
+        mk.ring.position.copy(s.pos);
+        mk.ring.scale.setScalar(s.def.size * 1.9 * pulse);
+        _v1.set(s.pos.x, 0, s.pos.z);
+        mk.planeRing.position.copy(_v1);
+        mk.planeRing.scale.setScalar(s.def.size * 0.9);
+        const off = Math.abs(s.pos.y) > 8;
+        mk.planeRing.visible = off;
+        mk.vline.visible = off;
+        this._setLine(mk.vline, _v1, s.pos);
+      }
+    }
     // range/arc visualization follows the primary ship
     if (this._rangeViz) {
       const s = this._rangeViz.ship;
@@ -1238,6 +1286,11 @@ export class World {
   updateDetection() {
     for (const e of this.ships) {
       if (e.isPlayer || !e.alive) continue;
+      // Charted objectives are known before the mission starts — fleet gave you
+      // their bearings. Without this the per-tick sweep overwrites the flag set
+      // at spawn and the wrecks are invisible until you are almost touching
+      // them, which in a sensor-blackout mission means never.
+      if (e.charted) { e.detected = true; e.blip = false; e.mesh.visible = true; continue; }
       let det = false, blip = false;
       for (const p of this.ships) {
         if (!p.isPlayer || !p.alive) continue;

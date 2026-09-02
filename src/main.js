@@ -358,8 +358,11 @@ class MissionRun {
       if (cls.derelict) {
         // A dead hull is scenery, not a combatant: `disabled` keeps every
         // weapon-targeting path off it so the prize can't be shot to pieces.
+        // `charted` means fleet gave you its bearing — it survives the sensor
+        // sweep, which would otherwise blank it every tick.
         ship.derelictHulk = true;
         ship.disabled = true;
+        ship.charted = true;
         ship.detected = true;
         this.derelicts.push(ship);
       }
@@ -757,6 +760,13 @@ class MissionRun {
 
     // boarding: keep a commanded hull close to a derelict to put a party aboard
     if (sp === 'board') {
+      // standing marks on the wrecks still to be taken, so they can be steered
+      // to from outside sensor range
+      const left = this.derelicts.filter(d => d.alive && !d.boardedDone);
+      if (left.length !== this._objMarkCount) {
+        this._objMarkCount = left.length;
+        this.world.setObjectiveMarks(left);
+      }
       for (const d of this.derelicts) {
         if (d.boardedDone) continue;
         const near = this.world.commandShips().some(
